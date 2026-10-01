@@ -18,7 +18,7 @@ Double-click it. That's the whole install.
 ## What it does
 
 ### Dashboard
-![Dashboard](docs/dashboard.png)
+![Dashboard](docs/dashboard-boreas.png)
 
 - **Live times:** your stage and bonus times appear as soon as you finish, with the gap to the record.
 - **Map info:** see the map you're on, its tier, the top 10, and the time left (including extends).
