@@ -8,7 +8,7 @@ A second-monitor dashboard for **KSF surf** in **Counter-Strike: Source**.
 
 Double-click it. That's the whole install.
 
-- No sign-in, no account, nothing else to install.
+- No sign-in, no account, nothing else to install. It never asks for your Steam password.
 - It finds your CS:S and your Steam account by itself.
 - Start (or restart) CS:S once and it connects.
 
@@ -38,19 +38,11 @@ Double-click it. That's the whole install.
 - Put restart, restart stage, save/load location and turn binds on any key.
 - Your binds already in the game show up here. Nothing shows in chat.
 
-## Is it VAC safe?
+## Is it safe?
 
-**Yes.** KSF Companion is not a cheat and works like a keybind, not a hack.
+**VAC:** ✅ Safe. It never touches the game's memory; it only uses config files and console commands, like a normal bind.
 
-| ✅ What it does | ❌ What it never does |
-|---|---|
-| Adds a few config files (`ksf_*.cfg`) | Read or change the game's memory |
-| Reads the game's console log | Inject anything into the game |
-| Records a demo with the game's normal `record` command, and reads it | Change any game files |
-| Sends normal console commands, like a bind does | Give you any advantage in game |
-| Gets public data from [ksf.surf](https://ksf.surf) | |
-
-VAC looks for programs that tamper with the game. This doesn't. Everything it does, you could do yourself by typing in the console.
+**Your Steam account:** 🔒 Never touched. It never asks for, reads or stores your Steam password or login. It only looks up your public Steam ID (the one on your profile page) so it can show your own KSF times.
 
 ## Update or remove
 
