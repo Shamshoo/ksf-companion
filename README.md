@@ -27,13 +27,13 @@ Double-click it. That's the whole install.
 - **Play later:** press F5 in game to save a map for later.
 
 ### Nominate
-![Nominate](docs/nominate.png)
+![Nominate](docs/nominate-boreas.png)
 
 - Search every KSF map (typos are OK), filter by tier, type, or done / not done.
 - Nominate or rock the vote in one click.
 
 ### Binds
-![Binds](docs/binds.png)
+![Binds](docs/binds-boreas.png)
 
 - Put restart, restart stage, save/load location and turn binds on any key.
 - Your binds already in the game show up here. Nothing shows in chat.
