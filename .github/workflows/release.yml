@@ -1,0 +1,39 @@
+# Push a tag like v3.2.0 (or run it by hand from the Actions tab) and this builds KSFCompanion.exe and puts it
+# on a GitHub release - the file people download and double-click.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Self-tests
+        shell: pwsh
+        run: |
+          dotnet build KSFCompanion/KSFCompanion.csproj -c Release -nologo
+          $exe = "KSFCompanion/bin/Release/net48/KSFCompanion.exe"
+          $env:KSFC_DATA_DIR = "$env:RUNNER_TEMP/ksfc-test"
+          foreach ($test in "--clock-test", "--binds-test") {
+            $p = Start-Process $exe -ArgumentList $test -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:RUNNER_TEMP/out.txt"
+            Get-Content "$env:RUNNER_TEMP/out.txt"
+            if ($p.ExitCode -ne 0) { throw "$test failed" }
+          }
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: KSFCompanion/bin/Release/net48/KSFCompanion.exe
+          generate_release_notes: true

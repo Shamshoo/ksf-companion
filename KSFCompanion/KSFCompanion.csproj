@@ -1,0 +1,36 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- .NET Framework 4.8 ships with Windows 10/11, so the exe runs without installing anything. -->
+    <TargetFramework>net48</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>KSFCompanion</AssemblyName>
+    <RootNamespace>KsfCompanion</RootNamespace>
+    <Version>3.2.0</Version>
+    <Product>KSF Companion</Product>
+    <Description>KSF surf dashboard for your second monitor, plus in-game map info and a play-later list for CS:S.</Description>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Rendered from Ui\Assets\icon.svg by Ui\Assets\build-icon.ps1 -->
+    <ApplicationIcon>Ui\Assets\app.ico</ApplicationIcon>
+    <AutomaticallyUseReferenceAssemblyPackages>false</AutomaticallyUseReferenceAssemblyPackages>
+    <Prefer32Bit>false</Prefer32Bit>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Net.Http" />
+    <!-- JavaScriptSerializer; System.Web is only here so the XAML compiler can resolve it. -->
+    <Reference Include="System.Web" />
+    <Reference Include="System.Web.Extensions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Ui\Assets\app.ico;Ui\Assets\icon-*.png" />
+    <Resource Include="Ui\Assets\app.ico" />
+    <Resource Include="Ui\Assets\icon-16.png;Ui\Assets\icon-20.png;Ui\Assets\icon-24.png;Ui\Assets\icon-32.png" />
+  </ItemGroup>
+
+</Project>

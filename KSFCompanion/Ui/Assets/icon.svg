@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- KSF Companion app icon:
+       surf ramps running toward a sunset on the horizon, a player carving along the near ramp.
+       app.ico and the PNGs are rendered from icon.svg and icon-small.svg by build-icon.ps1. -->
+  <defs>
+    <clipPath id="tile"><rect x="8" y="8" width="240" height="240" rx="56" /></clipPath>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#07070B" />
+      <stop offset="0.28" stop-color="#110B12" />
+      <stop offset="0.38" stop-color="#2E1610" />
+      <stop offset="0.44" stop-color="#150B0C" />
+      <stop offset="1" stop-color="#060607" />
+    </linearGradient>
+    <radialGradient id="sun" cx="200" cy="92" r="125" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFC06A" stop-opacity="0.8" />
+      <stop offset="0.22" stop-color="#FF7A1A" stop-opacity="0.44" />
+      <stop offset="1" stop-color="#FF5A14" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="face" x1="-40" y1="352" x2="200" y2="92" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#C9380A" />
+      <stop offset="0.55" stop-color="#FF7A1A" />
+      <stop offset="1" stop-color="#FFD595" />
+    </linearGradient>
+    <linearGradient id="faceShade" x1="0" y1="206" x2="0" y2="352" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.2" />
+      <stop offset="0.3" stop-color="#FFFFFF" stop-opacity="0" />
+      <stop offset="1" stop-color="#000000" stop-opacity="0.5" />
+    </linearGradient>
+    <linearGradient id="back" x1="-40" y1="0" x2="200" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1A0905" />
+      <stop offset="1" stop-color="#7A300D" />
+    </linearGradient>
+    <linearGradient id="farFace" x1="-40" y1="0" x2="200" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4A1C0A" />
+      <stop offset="1" stop-color="#FF9A45" />
+    </linearGradient>
+    <linearGradient id="trail" x1="-40" y1="232.3" x2="113.6" y2="142.5" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0" />
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.35" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.95" />
+    </linearGradient>
+    <radialGradient id="playerGlow" cx="113.6" cy="142.5" r="24.3" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.8" />
+      <stop offset="0.35" stop-color="#FFE3B8" stop-opacity="0.35" />
+      <stop offset="1" stop-color="#FFB24A" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.18" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.04" />
+    </linearGradient>
+  </defs>
+
+  <g clip-path="url(#tile)">
+    <!-- dusk sky with the sun where the ramps meet the horizon -->
+    <rect width="256" height="256" fill="url(#sky)" />
+    <rect width="256" height="256" fill="url(#sun)" />
+    <g fill="#FFE9D2">
+      <circle cx="52" cy="46" r="1.4" opacity="0.5" />
+      <circle cx="96" cy="30" r="1" opacity="0.35" />
+      <circle cx="150" cy="44" r="1.2" opacity="0.4" />
+      <circle cx="30" cy="80" r="1" opacity="0.3" />
+    </g>
+
+    <!-- a ramp further out -->
+    <polygon points="-40,108 200,92 -40,118" fill="#160A07" />
+    <polygon points="-40,118 200,92 -40,142" fill="url(#farFace)" />
+    <line x1="-40" y1="118" x2="200" y2="92" stroke="#FFD9A8" stroke-opacity="0.45" stroke-width="1.5" />
+
+    <!-- the ramp you're surfing: back side, lit surf face, shading and a bright ridge -->
+    <polygon points="-40,156 200,92 -40,206" fill="url(#back)" />
+    <polygon points="-40,206 200,92 -40,352" fill="url(#face)" />
+    <polygon points="-40,206 200,92 -40,352" fill="url(#faceShade)" />
+    <line x1="-40" y1="267.3" x2="200" y2="92" stroke="#FFFFFF" stroke-opacity="0.1" stroke-width="1.5" />
+    <line x1="-40" y1="296.5" x2="200" y2="92" stroke="#FFFFFF" stroke-opacity="0.1" stroke-width="1.5" />
+    <line x1="-40" y1="322.8" x2="200" y2="92" stroke="#FFFFFF" stroke-opacity="0.1" stroke-width="1.5" />
+    <line x1="-40" y1="206" x2="200" y2="92" stroke="#FFE9C9" stroke-opacity="0.9" stroke-width="3" />
+
+    <!-- the player and their trail -->
+    <polygon points="-37.9,243.1 -32.2,241.6 -26.3,239.7 -20.4,237.5 -14.5,234.9 -8.8,232 -3.1,228.7 2.5,225.2 8.1,221.5 13.5,217.5 19,213.4 24.3,209.1 29.7,204.8 35,200.4 40.3,196.1 45.5,191.8 50.8,187.5 56.1,183.3 61.3,179.2 66.6,175.3 71.8,171.4 77.1,167.7 82.4,164.1 87.7,160.6 93,157.1 98.3,153.8 103.7,150.5 109,147.1 114.3,143.7 112.9,141.3 107.2,143.9 101.6,146.7 95.9,149.5 90.3,152.4 84.6,155.4 79,158.4 73.3,161.6 67.6,164.9 61.9,168.3 56.2,171.8 50.4,175.4 44.7,179.1 39,182.9 33.3,186.7 27.6,190.5 22,194.3 16.3,198 10.7,201.5 5.2,204.9 -0.3,208 -5.7,210.8 -11.1,213.4 -16.4,215.6 -21.6,217.4 -26.7,218.9 -31.8,220 -36.8,220.9 -42.1,221.5" fill="url(#trail)" />
+    <circle cx="113.6" cy="142.5" r="24.3" fill="url(#playerGlow)" />
+    <circle cx="113.6" cy="142.5" r="9.4" fill="#FFFFFF" />
+  </g>
+
+  <!-- thin highlight around the tile -->
+  <rect x="9.5" y="9.5" width="237" height="237" rx="54.5" fill="none" stroke="url(#edge)" stroke-width="3" />
+</svg>
