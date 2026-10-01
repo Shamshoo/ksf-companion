@@ -19,7 +19,10 @@ namespace KsfCompanion.Ui
         const int StoredWidth = 1600;
         readonly HttpClient http;
         readonly string dir;
-        readonly SemaphoreSlim downloads = new SemaphoreSlim(3, 3);
+        // Thumbnails (the nominate page can ask for dozens) and the pictures of the map you're on don't share a
+        // queue: the big picture never waits behind thumbnails.
+        readonly SemaphoreSlim downloads = new SemaphoreSlim(4, 4);
+        readonly SemaphoreSlim urgentDownloads = new SemaphoreSlim(2, 2);
 
         public ImageCache(HttpClient http)
         {
@@ -28,14 +31,14 @@ namespace KsfCompanion.Ui
             Directory.CreateDirectory(dir);
         }
 
-        public Task<BitmapSource> MapAsync(string map, int width) => LoadAsync("map_" + map.ToLowerInvariant(), KsfApi.MapImage(map), width);
+        public Task<BitmapSource> MapAsync(string map, int width, bool urgent = false) => LoadAsync("map_" + map.ToLowerInvariant(), KsfApi.MapImage(map), width, urgent);
 
         public Task<BitmapSource> AvatarAsync(string url) => LoadAsync("avatar_" + Hash(url), url, 96);
 
         /// <summary>The map picture shrunk to a few dozen pixels and blurred: a soft wash of its colours for behind the dashboard.</summary>
         public async Task<BitmapSource> AmbientAsync(string map)
         {
-            var small = await MapAsync(map, 40).ConfigureAwait(false);
+            var small = await MapAsync(map, 40, urgent: true).ConfigureAwait(false);
             return small == null ? null : await Task.Run(() => Blur(small)).ConfigureAwait(false);
         }
 
@@ -75,7 +78,7 @@ namespace KsfCompanion.Ui
             }
         }
 
-        async Task<BitmapSource> LoadAsync(string key, string url, int width)
+        async Task<BitmapSource> LoadAsync(string key, string url, int width, bool urgent = false)
         {
             var file = Path.Combine(dir, key + ".jpg");
             var missing = file + ".missing";
@@ -84,19 +87,30 @@ namespace KsfCompanion.Ui
                 // Don't ask again for a day when a map has no preview.
                 if (File.Exists(missing) && File.GetLastWriteTimeUtc(missing) > DateTime.UtcNow.AddDays(-1)) return null;
 
-                await downloads.WaitAsync().ConfigureAwait(false);
+                var lane = urgent ? urgentDownloads : downloads;
+                await lane.WaitAsync().ConfigureAwait(false);
                 try
                 {
-                    if (!File.Exists(file))
+                    // A slow or busy moment on ksf.surf: try again before giving up on the picture.
+                    for (var attempt = 1; !File.Exists(file); attempt++)
                     {
-                        using var response = await http.GetAsync(url).ConfigureAwait(false);
-                        if (!response.IsSuccessStatusCode)
+                        try
                         {
-                            File.WriteAllText(missing, "");
-                            return null;
+                            using var response = await http.GetAsync(url).ConfigureAwait(false);
+                            // Only "there's no such picture" counts as missing - not a busy or failing server.
+                            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                            {
+                                File.WriteAllText(missing, "");
+                                return null;
+                            }
+                            response.EnsureSuccessStatusCode();
+                            var bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+                            await Task.Run(() => Store(bytes, file)).ConfigureAwait(false);
                         }
-                        var bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
-                        await Task.Run(() => Store(bytes, file)).ConfigureAwait(false);
+                        catch (Exception ex) when (attempt < 3 && (ex is HttpRequestException || ex is TaskCanceledException))
+                        {
+                            await Task.Delay(1500 * attempt).ConfigureAwait(false);
+                        }
                     }
                 }
                 catch (Exception ex) when (ex is HttpRequestException || ex is TaskCanceledException || ex is IOException || ex is NotSupportedException)
@@ -105,7 +119,7 @@ namespace KsfCompanion.Ui
                 }
                 finally
                 {
-                    downloads.Release();
+                    lane.Release();
                 }
             }
 

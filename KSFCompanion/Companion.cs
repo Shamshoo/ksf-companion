@@ -280,6 +280,9 @@ namespace KsfCompanion
             {
                 if (currentMap == null || inGameAt != null) return;
                 inGameAt = DateTime.Now;
+                // Still on a KSF server: start the live timer recording now, not once "status" has answered - a stage
+                // finished in the first seconds of the map would be missed otherwise.
+                if (onKsfServer) EnsureLiveDemo();
                 // The new map's time limit has arrived by now.
                 CheckTimeLimitSoon(2);
             };
@@ -861,6 +864,8 @@ namespace KsfCompanion
         {
             var game = Game;
             var info = catalog.Find(map);
+            // Its picture too, so the map's picture is there the moment it starts.
+            _ = images.MapAsync(map, 40);
             try
             {
                 if (info == null)
@@ -1601,7 +1606,7 @@ namespace KsfCompanion
 
         async Task LoadHeroImageAsync(string map)
         {
-            var image = await images.MapAsync(map, 1600);
+            var image = await images.MapAsync(map, 1600, urgent: true);
             if (map == currentMap) vm.MapImage = image;
         }
 

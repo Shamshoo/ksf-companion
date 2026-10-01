@@ -9,7 +9,7 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>KSFCompanion</AssemblyName>
     <RootNamespace>KsfCompanion</RootNamespace>
-    <Version>3.2.0</Version>
+    <Version>3.2.1</Version>
     <Product>KSF Companion</Product>
     <Description>KSF surf dashboard for your second monitor, plus in-game map info and a play-later list for CS:S.</Description>
     <ApplicationManifest>app.manifest</ApplicationManifest>

@@ -174,7 +174,7 @@ namespace KsfCompanion
         static readonly TimeSpan MapInfoLifetime = TimeSpan.FromMinutes(30), ZoneWrLifetime = TimeSpan.FromHours(24);
         // ksf.surf answers "429 Too Many Requests" when asked too much too fast, so zone records trickle in one at a time.
         // Brisk normally; after a "too many requests" it slows right down for a few minutes.
-        static readonly TimeSpan QuickSpacing = TimeSpan.FromMilliseconds(450), CarefulSpacing = TimeSpan.FromMilliseconds(1200),
+        static readonly TimeSpan QuickSpacing = TimeSpan.FromMilliseconds(120), CarefulSpacing = TimeSpan.FromMilliseconds(1200),
             CarefulFor = TimeSpan.FromMinutes(5), BusyPause = TimeSpan.FromSeconds(30);
         DateTime carefulUntil;
         TimeSpan ZoneRequestSpacing => DateTime.Now < carefulUntil ? CarefulSpacing : QuickSpacing;
