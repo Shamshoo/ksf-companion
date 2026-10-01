@@ -17,13 +17,26 @@ Double-click it. That's the whole install.
 
 ## What it does
 
+### Dashboard
+![Dashboard](docs/dashboard.png)
+
 - **Live times:** your stage and bonus times appear as soon as you finish, with the gap to the record.
 - **Map info:** see the map you're on, its tier, the top 10, and the time left (including extends).
 - **Your rank:** see your KSF title, rank and points on 66 and 100 tick.
-- **Nominate:** search every KSF map, see which ones you've done, and nominate one in one click.
-- **Binds:** put restart, restart stage, save/load location and turn binds on any key. Nothing shows in chat.
-- **Play later:** press F5 in game to save a map for later.
 - **Servers:** see every KSF server, who's on, and the map, and join in one click.
+- **Play later:** press F5 in game to save a map for later.
+
+### Nominate
+![Nominate](docs/nominate.png)
+
+- Search every KSF map (typos are OK), filter by tier, type, or done / not done.
+- Nominate or rock the vote in one click.
+
+### Binds
+![Binds](docs/binds.png)
+
+- Put restart, restart stage, save/load location and turn binds on any key.
+- Your binds already in the game show up here. Nothing shows in chat.
 
 ## Is it VAC safe?
 
