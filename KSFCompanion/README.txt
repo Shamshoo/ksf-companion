@@ -85,7 +85,8 @@ The Binds tab (top of the window)
     speed slider (cl_yawspeed). Your own command (like sm_stage 2 or !b 1) can go on a key too.
   - They run from the console, never from chat, so nobody sees anything. KSF's answer (like
     "saved location") only shows in your own chat.
-  - Click a key button, then press the key - or a mouse button (not the left one) or turn the wheel.
+  - Click a key button, then press the key - or a mouse button or turn the wheel (click the button
+    again for the left mouse button).
     Esc cancels. Search finds an action by its name, its command or the key it's on.
   - A key you take over gets back what it did before when you take the bind off (shown on the row
     as "replaces ..."). They're written to cfg\ksf_binds.cfg and loaded straight away while the

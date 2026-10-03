@@ -1,36 +1,44 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <!-- .NET Framework 4.8 ships with Windows 10/11, so the exe runs without installing anything. -->
-    <TargetFramework>net48</TargetFramework>
-    <UseWPF>true</UseWPF>
-    <UseWindowsForms>true</UseWindowsForms>
+    <!-- Linux build: Avalonia instead of WPF. Publish it as one self-contained file (see README-linux.md). -->
+    <TargetFramework>net10.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <AssemblyName>KSFCompanion</AssemblyName>
     <RootNamespace>KsfCompanion</RootNamespace>
     <Version>3.2.1</Version>
     <Product>KSF Companion</Product>
     <Description>KSF surf dashboard for your second monitor, plus in-game map info and a play-later list for CS:S.</Description>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
-    <!-- Rendered from Ui\Assets\icon.svg by Ui\Assets\build-icon.ps1 -->
-    <ApplicationIcon>Ui\Assets\app.ico</ApplicationIcon>
-    <AutomaticallyUseReferenceAssemblyPackages>false</AutomaticallyUseReferenceAssemblyPackages>
     <Prefer32Bit>false</Prefer32Bit>
     <DebugType>embedded</DebugType>
+    <!-- Numbers are shown the way the Windows build's screenshots show them (4,936), whatever the system locale. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <!-- The window finds its named parts itself. -->
+    <AvaloniaNameGeneratorIsEnabled>false</AvaloniaNameGeneratorIsEnabled>
+    <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
 
   <ItemGroup>
-    <Reference Include="System.Net.Http" />
-    <!-- JavaScriptSerializer; System.Web is only here so the XAML compiler can resolve it. -->
-    <Reference Include="System.Web" />
-    <Reference Include="System.Web.Extensions" />
+    <PackageReference Include="Avalonia" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.22" />
+    <!-- Only for the preview command, which draws the dashboard to a PNG without a window. -->
+    <PackageReference Include="Avalonia.Headless" Version="11.3.22" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Remove="Ui\Assets\app.ico;Ui\Assets\icon-*.png" />
-    <Resource Include="Ui\Assets\app.ico" />
-    <Resource Include="Ui\Assets\icon-16.png;Ui\Assets\icon-20.png;Ui\Assets\icon-24.png;Ui\Assets\icon-32.png" />
+    <AvaloniaResource Include="Ui\Assets\icon-*.png;Ui\Assets\Fonts\*.ttf" />
+    <None Remove="Ui\Assets\app.ico" />
   </ItemGroup>
 
 </Project>

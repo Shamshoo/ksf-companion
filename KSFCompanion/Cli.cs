@@ -5,11 +5,9 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Media;
-using System.Windows.Media.Animation;
-using System.Windows.Media.Imaging;
+using Avalonia;
+using Avalonia.Headless;
+using Avalonia.Threading;
 using KsfCompanion.Ui;
 
 namespace KsfCompanion
@@ -18,20 +16,19 @@ namespace KsfCompanion
     static class Cli
     {
         const string Usage =
-            "KSFCompanion.exe                 run in the tray (normal use)\n" +
-            "KSFCompanion.exe --install       add the cfgs/keys to CS:S\n" +
-            "KSFCompanion.exe --uninstall     remove them again (close CS:S first)\n" +
-            "KSFCompanion.exe --card <map> [66|100]   print the KSF card for a map\n" +
-            "KSFCompanion.exe --parse <log>   show which maps/F5 presses a console log contains\n" +
-            "KSFCompanion.exe --preview <map> <file.png> [width] [height] [66|100]   render the dashboard to an image\n" +
-            "                 (map \"live\" = the busiest KSF server right now, with the live panels filled in)\n" +
-            "KSFCompanion.exe --push \"<cmd>\" [raw|commandline]   send a console command to the running game\n" +
-            "KSFCompanion.exe --hud <demo.dem>   show the timer text (stage you're on, stage finishes) found in a demo";
+            "KSFCompanion                 run in the tray (normal use)\n" +
+            "KSFCompanion --install       add the cfgs/keys to CS:S\n" +
+            "KSFCompanion --uninstall     remove them again (close CS:S first)\n" +
+            "KSFCompanion --card <map> [66|100]   print the KSF card for a map\n" +
+            "KSFCompanion --parse <log>   show which maps/F5 presses a console log contains\n" +
+            "KSFCompanion --preview <map> <file.png> [width] [height] [66|100]   render the dashboard to an image\n" +
+            "             (map \"live\" = the busiest KSF server right now, with the live panels filled in)\n" +
+            "KSFCompanion --push \"<cmd>\"   send a console command to the running game (needs -usercon in its launch options)\n" +
+            "KSFCompanion --link          check whether the running game takes commands from KSF Companion\n" +
+            "KSFCompanion --hud <demo.dem>   show the timer text (stage you're on, stage finishes) found in a demo";
 
         public static int Run(string[] args, Settings settings)
         {
-            if (NativeMethods.GetStdHandle(NativeMethods.STD_OUTPUT_HANDLE) == IntPtr.Zero)
-                NativeMethods.AttachConsole(NativeMethods.ATTACH_PARENT_PROCESS);
             var output = Console.Out;
 
             try
@@ -101,6 +98,7 @@ namespace KsfCompanion
                         }
 
                     case "--push" when args.Length > 1:
+                    case "--link":
                         {
                             var pid = GameBridge.FindGameProcessId();
                             if (pid == 0)
@@ -108,10 +106,13 @@ namespace KsfCompanion
                                 output.WriteLine("CS:S isn't running");
                                 return 1;
                             }
-                            var format = args.Length > 2 && args[2] == "commandline" ? LinkFormat.CommandLine : LinkFormat.Raw;
-                            var result = GameBridge.Send(GameBridge.FindGameWindow(pid), GameBridge.Wrap(args[1], format));
+                            output.WriteLine($"game: pid {pid}, -usercon {(GameBridge.HasUserCon(pid) ? "yes" : "NO - add it to the launch options")}, " +
+                                             $"listening on {GameBridge.ListeningPort(pid)?.ToString(CultureInfo.InvariantCulture) ?? "nothing"}");
+                            using var rcon = new RconClient();
+                            var command = args[0] == "--link" ? $"echo \"{GameConfig.LinkMarker} test\"" : args[1];
+                            var result = rcon.SendAsync(pid, GameConfig.RconPassword(settings), command).GetAwaiter().GetResult();
                             output.WriteLine("result: " + result);
-                            return result == SendResult.Accepted || result == SendResult.Declined ? 0 : 1;
+                            return result == SendResult.Accepted ? 0 : 1;
                         }
 
                     default:
@@ -141,9 +142,13 @@ namespace KsfCompanion
             var style = settings.GetInt("ksf_style", 0, 3);
             var steamId = SteamLocator.FindSteamId(settings.Get("steamid")) ?? SteamLocator.ParseSteamId(settings.Get("last_steamid"));
 
-            Program.CreateApplication();
+            AppBuilder.Configure<App>()
+                .UseSkia()
+                .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
+                .WithInterFont()
+                .SetupWithoutStarting();
             // The picture is taken straight away, before any bar could fill up.
-            BarFill.Animate = false;
+            FillBar.AnimationsOn = false;
             using var api = new KsfApi();
             var images = new ImageCache(api.Http);
             var later = new PlayLaterList(Path.Combine(Program.DataDir, "play-later.txt"));
@@ -333,21 +338,21 @@ namespace KsfCompanion
                 vm.Page = "nominate";
             }
 
-            var window = new DashboardWindow(vm, KeyNames.From(settings));
+            // Buttons without a command are drawn greyed out: give them the do-nothing ones the app's would be in a picture.
+            foreach (var command in typeof(DashboardViewModel).GetProperties().Where(p => p.PropertyType == typeof(System.Windows.Input.ICommand) && p.CanWrite))
+                if (command.GetValue(vm) == null) command.SetValue(vm, new RelayCommand(_ => { }));
+            var window = new DashboardWindow(vm, KeyNames.From(settings)) { Width = width, Height = height };
+            window.Show();
             if (celebrate) window.ShowCelebrationStill();
-            var root = (FrameworkElement)window.Content;
             window.Relayout(width);
-            root.Measure(new Size(width, height));
-            root.Arrange(new Rect(0, 0, width, height));
-            root.UpdateLayout();
-
-            var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
-            bitmap.Render(root);
-            var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(bitmap));
-            using (var file = File.Create(png)) encoder.Save(file);
+            Dispatcher.UIThread.RunJobs();
+            using var frame = window.CaptureRenderedFrame();
+            if (frame == null) throw new InvalidOperationException("nothing was drawn");
+            frame.Save(png);
             output.WriteLine("rendered " + png);
-            return Environment.GetEnvironmentVariable("KSFC_UI_SELFTEST") == "1" ? CheckHoverAnimations(root, output) : 0;
+            window.AllowClose = true;
+            window.Close();
+            return 0;
         }
 
         /// <summary>The map clock against made-up timelines: joining mid-map, extensions (said and unsaid), the timer's panel and countdown.</summary>
@@ -385,6 +390,9 @@ namespace KsfCompanion
             Check("a movement key gets a warning", toasts.Last().StartsWith("Careful") && Row("turn_left").Key == "w");
             vm.ClearCommand.Execute(Row("turn_left"));
             Check("taking a key off", changes.Last() == "turn_left:w>-" && Row("turn_left").Key == null);
+            Press("turn_left", "MOUSE1");
+            Check("turning on Mouse 1", changes.Last() == "turn_left:->MOUSE1" && Row("turn_left").Key == "MOUSE1" && Row("turn_left").KeyLabel == "Mouse 1");
+            vm.ClearCommand.Execute(Row("turn_left"));
             vm.CaptureCommand.Execute(Row("loadloc"));
             vm.CancelCapture();
             Check("Esc / clicking away doesn't change anything", Row("loadloc").Key == null && !vm.IsCapturing);
@@ -544,48 +552,6 @@ namespace KsfCompanion
             if (zones.Count == 0) return;
             Task.Run(() => api.FetchZoneWrsAsync(report.Info.Name, zones, report.Game, style,
                 (zone, wr) => { if (wr != null) report.ZoneWrs[zone] = wr; }, CancellationToken.None)).GetAwaiter().GetResult();
-        }
-
-        /// <summary>Starts every hover animation in the dashboard once, so a broken one shows up here instead of at runtime.</summary>
-        static int CheckHoverAnimations(DependencyObject root, TextWriter output)
-        {
-            int started = 0, failed = 0;
-            foreach (var element in Descendants(root).OfType<FrameworkElement>())
-            {
-                FrameworkTemplate template = element is System.Windows.Controls.Control control ? control.Template
-                    : element is System.Windows.Controls.ContentPresenter presenter ? presenter.ContentTemplate
-                    : null;
-                // Collapsed elements never build their template, so there is nothing to hover.
-                if (template == null || element.Visibility != Visibility.Visible || VisualTreeHelper.GetChildrenCount(element) == 0) continue;
-                var triggers = template is ControlTemplate ct ? ct.Triggers : template is DataTemplate dt ? dt.Triggers : null;
-                if (triggers == null) continue;
-                foreach (var trigger in triggers)
-                    foreach (var action in trigger.EnterActions.Concat(trigger.ExitActions).OfType<BeginStoryboard>())
-                    {
-                        try
-                        {
-                            action.Storyboard.Begin(element, template);
-                            started++;
-                        }
-                        catch (Exception ex)
-                        {
-                            failed++;
-                            output.WriteLine($"FAILED on {element.GetType().Name} '{(element as ContentControl)?.Content}' ({element.Name}): {ex.Message}");
-                        }
-                    }
-            }
-            output.WriteLine($"hover animations started: {started}, failed: {failed}");
-            return failed == 0 ? 0 : 1;
-        }
-
-        static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
-        {
-            for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
-            {
-                var child = VisualTreeHelper.GetChild(parent, i);
-                yield return child;
-                foreach (var grandchild in Descendants(child)) yield return grandchild;
-            }
         }
     }
 }

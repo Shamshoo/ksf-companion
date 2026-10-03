@@ -6,7 +6,10 @@ using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
-using System.Windows.Media;
+using Avalonia.Media;
+using Avalonia.Media.Immutable;
+using Brush = Avalonia.Media.IBrush;
+using ImageSource = Avalonia.Media.IImage;
 
 namespace KsfCompanion.Ui
 {
@@ -1536,11 +1539,6 @@ namespace KsfCompanion.Ui
             return when.ToString("MMM d", Inv);
         }
 
-        static Brush Frozen(string hex)
-        {
-            var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
-            brush.Freeze();
-            return brush;
-        }
+        static Brush Frozen(string hex) => new ImmutableSolidColorBrush(Color.Parse(hex));
     }
 }

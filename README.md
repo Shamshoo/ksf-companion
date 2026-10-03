@@ -51,6 +51,8 @@ Double-click it. That's the whole install.
 
 **Needs:** Windows 10 or 11 and Counter-Strike: Source on Steam.
 
+**On Linux?** This branch has a native Linux build - see [README-linux.md](README-linux.md).
+
 ---
 
 <sub>Not affiliated with KSF. Map data and pictures come from ksf.surf. ·

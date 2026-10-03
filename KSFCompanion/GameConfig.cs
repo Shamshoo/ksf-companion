@@ -41,6 +41,21 @@ namespace KsfCompanion
 
         public static string ValidKey(string key, string fallback) => GameKeys.Normalize(key?.Trim()) ?? fallback;
 
+        /// <summary>
+        /// The password KSF Companion uses on the game's remote console (made up once, kept in settings.ini). The game
+        /// only listens with -usercon in its launch options, and only answers someone who knows this.
+        /// </summary>
+        public static string RconPassword(Settings settings)
+        {
+            var password = settings.Get("rcon_password");
+            if (Regex.IsMatch(password, "^[A-Za-z0-9]{16,64}$")) return password;
+            const string letters = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+            var bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(24);
+            password = new string(bytes.Select(b => letters[b % letters.Length]).ToArray());
+            settings.Set("rcon_password", password);
+            return password;
+        }
+
         /// <summary>Your in-game name, as saved in config.cfg.</summary>
         public string PlayerName()
         {
@@ -72,6 +87,12 @@ namespace KsfCompanion
                 BlockStart,
                 "// Lets KSF Companion follow map changes and adds its keys. Delete this block to turn it off.",
                 $"con_logfile \"{LogFileName}\"",
+                "// Lets KSF Companion send console commands (nominate, teleport, the live timer demo) when CS:S is started",
+                "// with -usercon: the game's remote console, answering only this password.",
+                "sv_rcon_whitelist_address 127.0.0.1",
+                "sv_rcon_log 0",
+                $"rcon_password \"{RconPassword(settings)}\"",
+                "net_start",
                 "exec ksf_companion",
                 Echo($"KSF Companion ready - {GameKeys.Label(keys.Save)} saves the map for later, hold {GameKeys.Label(keys.Card)} for the map card, hold {GameKeys.Label(keys.List)} for your play-later list"),
                 BlockEnd);
@@ -100,7 +121,7 @@ namespace KsfCompanion
         // Only aliases and binds, so KSF Companion can also exec it in a game that is already running.
         static string CompanionCfg(KeyNames keys) => string.Join("\r\n",
             "// KSF Companion in-game keys. This file is rewritten every time KSF Companion starts;",
-            "// change the keys in Documents\\KSF Companion\\settings.ini instead.",
+            "// change the keys in Documents/KSF Companion/settings.ini instead.",
             $"alias ksf_save \"echo {SaveMarker}; play buttons/blip1.wav\"",
             "alias +ksf_card \"exec ksf_card; showconsole\"",
             "alias -ksf_card \"hideconsole; gameui_hide\"",

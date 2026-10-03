@@ -178,7 +178,8 @@ namespace KsfCompanion
             "PAUSE", "SCROLLLOCK", "NUMLOCK", "SEMICOLON",
             "KP_INS", "KP_END", "KP_DOWNARROW", "KP_PGDN", "KP_LEFTARROW", "KP_5", "KP_RIGHTARROW", "KP_HOME", "KP_UPARROW", "KP_PGUP",
             "KP_SLASH", "KP_MULTIPLY", "KP_MINUS", "KP_PLUS", "KP_ENTER", "KP_DEL",
-            "MOUSE2", "MOUSE3", "MOUSE4", "MOUSE5", "MWHEELUP", "MWHEELDOWN",
+            // Mouse 1 too: surfers often turn with the mouse buttons (+left / +right), as attack does nothing on surf.
+            "MOUSE1", "MOUSE2", "MOUSE3", "MOUSE4", "MOUSE5", "MWHEELUP", "MWHEELDOWN",
         };
         const string Punctuation = "',-./=[]";
 
