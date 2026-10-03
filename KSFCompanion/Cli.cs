@@ -390,6 +390,9 @@ namespace KsfCompanion
             Check("a movement key gets a warning", toasts.Last().StartsWith("Careful") && Row("turn_left").Key == "w");
             vm.ClearCommand.Execute(Row("turn_left"));
             Check("taking a key off", changes.Last() == "turn_left:w>-" && Row("turn_left").Key == null);
+            Press("turn_left", "MOUSE1");
+            Check("turning on Mouse 1", changes.Last() == "turn_left:->MOUSE1" && Row("turn_left").Key == "MOUSE1" && Row("turn_left").KeyLabel == "Mouse 1");
+            vm.ClearCommand.Execute(Row("turn_left"));
             vm.CaptureCommand.Execute(Row("loadloc"));
             vm.CancelCapture();
             Check("Esc / clicking away doesn't change anything", Row("loadloc").Key == null && !vm.IsCapturing);

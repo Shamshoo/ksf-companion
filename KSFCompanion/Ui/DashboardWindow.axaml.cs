@@ -378,12 +378,16 @@ namespace KsfCompanion.Ui
                 vm.Binds.Capture(name);
                 return;
             }
-            // A left click stops waiting; on the waiting row's own key button that's all it does.
+            // A left click on the waiting row's own key button is Mouse 1; anywhere else it stops waiting.
             var source = e.Source as Control;
             var row = source?.DataContext as BindRow;
-            var onWaitingButton = row != null && row.IsCapturing && InsideButton(source);
+            if (row != null && row.IsCapturing && InsideButton(source))
+            {
+                e.Handled = true;
+                vm.Binds.Capture("MOUSE1");
+                return;
+            }
             vm.Binds.CancelCapture();
-            if (onWaitingButton) e.Handled = true;
         }
 
         void OnCaptureWheel(object sender, PointerWheelEventArgs e)

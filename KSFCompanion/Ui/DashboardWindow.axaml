@@ -243,7 +243,7 @@
                     <Button Grid.Column="3" Theme="{StaticResource BindKeyButton}" VerticalAlignment="Center"
                             Classes.nokey="{Binding !HasKey}" Classes.capturing="{Binding IsCapturing}"
                             Command="{Binding $parent[Window].DataContext.Binds.CaptureCommand}" CommandParameter="{Binding}" Content="{Binding KeyLabel}"
-                            ToolTip.Tip="Click, then press the key (or a mouse button / the wheel). Esc cancels." ToolTip.ShowDelay="600" />
+                            ToolTip.Tip="Click, then press the key (or a mouse button / the wheel) - click it again for Mouse 1. Esc cancels." ToolTip.ShowDelay="600" />
                     <Button Grid.Column="4" Theme="{StaticResource IconButton}" Width="24" Height="24" HorizontalAlignment="Right"
                             Command="{Binding $parent[Window].DataContext.Binds.ClearCommand}" CommandParameter="{Binding}"
                             ToolTip.Tip="Take the key off (it gets back what it did before)">
