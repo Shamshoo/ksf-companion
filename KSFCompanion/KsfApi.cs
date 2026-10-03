@@ -8,7 +8,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using System.Web.Script.Serialization;
+using System.Text.Json;
 
 namespace KsfCompanion
 {
@@ -718,7 +718,26 @@ namespace KsfCompanion
 
     static class Json
     {
-        public static object Parse(string text) => new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.DeserializeObject(text);
+        /// <summary>
+        /// JSON as plain objects, the same shapes the Windows build's JavaScriptSerializer gives: objects as
+        /// Dictionary&lt;string, object&gt;, arrays as object[], whole numbers as int or long, other numbers as decimal.
+        /// </summary>
+        public static object Parse(string text)
+        {
+            using var document = JsonDocument.Parse(text, new JsonDocumentOptions { AllowTrailingCommas = true });
+            return Convert(document.RootElement);
+        }
+
+        static object Convert(JsonElement e) => e.ValueKind switch
+        {
+            JsonValueKind.Object => e.EnumerateObject().Aggregate(new Dictionary<string, object>(), (d, p) => { d[p.Name] = Convert(p.Value); return d; }),
+            JsonValueKind.Array => e.EnumerateArray().Select(Convert).ToArray(),
+            JsonValueKind.String => e.GetString(),
+            JsonValueKind.Number => e.TryGetInt32(out var i) ? i : e.TryGetInt64(out var l) ? l : e.TryGetDecimal(out var m) ? m : (object)e.GetDouble(),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => null,
+        };
 
         public static IEnumerable<Dictionary<string, object>> Objects(object value) =>
             (value as object[])?.OfType<Dictionary<string, object>>() ?? Enumerable.Empty<Dictionary<string, object>>();

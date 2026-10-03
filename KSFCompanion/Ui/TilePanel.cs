@@ -1,7 +1,7 @@
 using System;
 using System.Linq;
-using System.Windows;
-using System.Windows.Controls;
+using Avalonia;
+using Avalonia.Controls;
 
 namespace KsfCompanion.Ui
 {
@@ -11,21 +11,20 @@ namespace KsfCompanion.Ui
     /// </summary>
     class TilePanel : Panel
     {
-        public static readonly DependencyProperty MinItemWidthProperty = DependencyProperty.Register(
-            nameof(MinItemWidth), typeof(double), typeof(TilePanel), new FrameworkPropertyMetadata(220.0, FrameworkPropertyMetadataOptions.AffectsMeasure));
+        public static readonly StyledProperty<double> MinItemWidthProperty = AvaloniaProperty.Register<TilePanel, double>(nameof(MinItemWidth), 220.0);
+        public static readonly StyledProperty<double> SpacingProperty = AvaloniaProperty.Register<TilePanel, double>(nameof(Spacing), 14.0);
 
-        public static readonly DependencyProperty SpacingProperty = DependencyProperty.Register(
-            nameof(Spacing), typeof(double), typeof(TilePanel), new FrameworkPropertyMetadata(14.0, FrameworkPropertyMetadataOptions.AffectsMeasure));
+        static TilePanel() => AffectsMeasure<TilePanel>(MinItemWidthProperty, SpacingProperty);
 
         public double MinItemWidth
         {
-            get => (double)GetValue(MinItemWidthProperty);
+            get => GetValue(MinItemWidthProperty);
             set => SetValue(MinItemWidthProperty, value);
         }
 
         public double Spacing
         {
-            get => (double)GetValue(SpacingProperty);
+            get => GetValue(SpacingProperty);
             set => SetValue(SpacingProperty, value);
         }
 
@@ -40,11 +39,11 @@ namespace KsfCompanion.Ui
             columns = Math.Max(1, (int)((width + Spacing) / (MinItemWidth + Spacing)));
             itemWidth = Math.Max(0, Math.Floor((width - Spacing * (columns - 1)) / columns));
 
-            var count = InternalChildren.Count;
+            var count = Children.Count;
             rowHeights = new double[(count + columns - 1) / columns];
             for (var i = 0; i < count; i++)
             {
-                var child = InternalChildren[i];
+                var child = Children[i];
                 child.Measure(new Size(itemWidth, double.PositiveInfinity));
                 rowHeights[i / columns] = Math.Max(rowHeights[i / columns], child.DesiredSize.Height);
             }
@@ -55,11 +54,11 @@ namespace KsfCompanion.Ui
         protected override Size ArrangeOverride(Size final)
         {
             double y = 0;
-            for (var i = 0; i < InternalChildren.Count; i++)
+            for (var i = 0; i < Children.Count; i++)
             {
                 int row = i / columns, column = i % columns;
                 if (column == 0 && row > 0) y += rowHeights[row - 1] + Spacing;
-                InternalChildren[i].Arrange(new Rect(column * (itemWidth + Spacing), y, itemWidth, rowHeights[row]));
+                Children[i].Arrange(new Rect(column * (itemWidth + Spacing), y, itemWidth, rowHeights[row]));
             }
             return final;
         }

@@ -20,12 +20,12 @@ namespace KsfCompanion
             ("view", "advanced", "the dashboard: simple (the essentials, bigger and cleaner) or advanced (every detail) - also the switch at the top of the dashboard"),
             ("hidden", "", "parts of the dashboard you've hidden (Customize at the top brings them back): map, timer, numbers, times, leaderboard, keys, live, session, level, later, servers, recent"),
             ("size", "100", "how big the dashboard is drawn, in percent (80 to 150) - also the Size slider in Customize"),
-            ("live_hud", "1", "1 = on KSF servers, have the game record a demo (cstrike\\ksfc_live.dem, replaced every map, deleted when the game closes) so the dashboard can read the timer's on-screen text live: the stage you're on and your stage/bonus times the moment you finish them. Only reads the file - nothing touches the game"),
+            ("live_hud", "1", "1 = on KSF servers, have the game record a demo (cstrike/ksfc_live.dem, replaced every map, deleted when the game closes) so the dashboard can read the timer's on-screen text live: the stage you're on and your stage/bonus times the moment you finish them. Only reads the file - nothing touches the game"),
             ("turn_speed", "210", "how fast the turn binds turn, in degrees a second (cl_yawspeed) - also the slider on the dashboard's Binds page, where the binds are set"),
             ("key_save", "F5", "saves the current map to your play-later list (these three can also be changed on the Binds page)"),
             ("key_card", "F6", "hold to open the console with the KSF card for the current map"),
             ("key_list", "F7", "hold to open the console with your play-later list"),
-            ("game_dir", "auto", @"your ...\Counter-Strike Source\cstrike folder, or auto to find it through Steam"),
+            ("game_dir", "auto", "your .../Counter-Strike Source/cstrike folder, or auto to find it through Steam"),
         };
 
         // Replaced by newer settings; dropped when the file is rewritten.
@@ -88,7 +88,7 @@ namespace KsfCompanion
         void Save()
         {
             var sb = new StringBuilder();
-            sb.AppendLine("# KSF Companion settings. Edit with Notepad, then restart KSF Companion (right-click the tray icon > Exit).");
+            sb.AppendLine("# KSF Companion settings. Edit with any text editor, then restart KSF Companion (right-click the tray icon > Exit).");
             foreach (var d in Documented)
             {
                 sb.AppendLine();

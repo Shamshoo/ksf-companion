@@ -10,10 +10,13 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Threading;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
+using Avalonia.Threading;
 using KsfCompanion.Ui;
-using Forms = System.Windows.Forms;
 
 namespace KsfCompanion
 {
@@ -69,14 +72,14 @@ namespace KsfCompanion
         readonly KsfApi api = new KsfApi();
         readonly ImageCache images;
         readonly DashboardViewModel vm = new DashboardViewModel();
-        readonly Dispatcher dispatcher = Dispatcher.CurrentDispatcher;
-        readonly Forms.NotifyIcon tray;
-        readonly Forms.ToolStripMenuItem statusItem, keepOnTopItem;
+        readonly TrayIcon tray;
+        readonly NativeMenuItem statusItem, keepOnTopItem;
         readonly DispatcherTimer timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         readonly SemaphoreSlim sendLock = new SemaphoreSlim(1, 1);
         readonly Dictionary<string, MapReport> cache = new Dictionary<string, MapReport>(StringComparer.OrdinalIgnoreCase);
         readonly LogParser parser = new LogParser();
-        readonly RegisteredWaitHandle showWait;
+        // Sends console commands to the game (over its remote console: see GameBridge).
+        readonly RconClient rcon = new RconClient();
 
         GameConfig config;
         LogWatcher watcher;
@@ -85,10 +88,10 @@ namespace KsfCompanion
         bool placementDirty;
 
         int gamePid;
-        IntPtr gameWindow;
         DateTime gameSeenAt, gameStartedAt, nextGameCheck, nextCheckpoint;
         LinkState link = LinkState.NoGame;
-        LinkFormat linkFormat;
+        // Why the game isn't taking commands, when it isn't (no -usercon, or started before the setup).
+        SendResult linkProblem = SendResult.Accepted;
         DateTime nextLinkTest;
         int linkAttempts;
         string awaitedNonce;
@@ -173,13 +176,12 @@ namespace KsfCompanion
         DateTime sessionStart = DateTime.Now;
         int sessionMaps, sessionFinishes, sessionPbs;
 
-        public Companion(Settings settings, EventWaitHandle showSignal, bool startHidden)
+        public Companion(Settings settings, InstanceGuard instance, bool startHidden)
         {
             this.settings = settings;
             keys = KeyNames.From(settings);
             later = new PlayLaterList(Path.Combine(Program.DataDir, "play-later.txt"));
             images = new ImageCache(api.Http);
-            linkFormat = settings.Get("link_format") == "commandline" ? LinkFormat.CommandLine : LinkFormat.Raw;
             if (int.TryParse(settings.Get("last_rank"), out var rank)) lastRank = rank;
             if (int.TryParse(settings.Get("last_points"), out var points)) lastPoints = points;
 
@@ -238,42 +240,52 @@ namespace KsfCompanion
             };
             vm.Binds.GameKeyRemoved += RemoveGameBind;
 
-            var menu = new Forms.ContextMenuStrip();
-            statusItem = new Forms.ToolStripMenuItem("Starting...") { Enabled = false };
-            var openItem = new Forms.ToolStripMenuItem("Open dashboard", null, (s, e) => ShowDashboard(activate: true));
-            openItem.Font = new System.Drawing.Font(openItem.Font, System.Drawing.FontStyle.Bold);
-            var announce = new Forms.ToolStripMenuItem("Run !m and !mrank on map load (KSF answers in chat)") { CheckOnClick = true, Checked = settings.GetBool("run_server_commands") };
-            announce.CheckedChanged += (s, e) => settings.Set("run_server_commands", announce.Checked ? "1" : "0");
-            var autoOpen = new Forms.ToolStripMenuItem("Open the dashboard when CS:S starts") { CheckOnClick = true, Checked = settings.GetBool("dashboard_on_game_start") };
-            autoOpen.CheckedChanged += (s, e) => settings.Set("dashboard_on_game_start", autoOpen.Checked ? "1" : "0");
-            var startWithWindows = new Forms.ToolStripMenuItem("Start with Windows") { CheckOnClick = true, Checked = Startup.IsEnabled };
-            startWithWindows.CheckedChanged += (s, e) => Startup.Set(startWithWindows.Checked);
-            keepOnTopItem = new Forms.ToolStripMenuItem("Keep the dashboard on top") { CheckOnClick = true, Checked = settings.GetBool("window_topmost") };
-            keepOnTopItem.CheckedChanged += (s, e) =>
+            NativeMenuItem Item(string header, Action click)
+            {
+                var item = new NativeMenuItem(header);
+                item.Click += (s, e) => click();
+                return item;
+            }
+            NativeMenuItem Toggle(string header, bool on, Action<bool> changed)
+            {
+                var item = new NativeMenuItem(header) { ToggleType = NativeMenuItemToggleType.CheckBox, IsChecked = on };
+                item.Click += (s, e) =>
+                {
+                    item.IsChecked = !item.IsChecked;
+                    changed(item.IsChecked);
+                };
+                return item;
+            }
+            var menu = new NativeMenu();
+            statusItem = new NativeMenuItem("Starting...") { IsEnabled = false };
+            keepOnTopItem = Toggle("Keep the dashboard on top", settings.GetBool("window_topmost"), on =>
             {
                 EnsureWindow();
-                window.SetTopmost(keepOnTopItem.Checked);
-            };
+                window.SetTopmost(on);
+            });
             menu.Items.Add(statusItem);
-            menu.Items.Add(new Forms.ToolStripSeparator());
-            menu.Items.Add(openItem);
-            menu.Items.Add("Open this map on ksf.surf", null, (s, e) => OpenMapPage(currentMap));
-            menu.Items.Add("Refresh now", null, (s, e) => RefreshEverything());
-            menu.Items.Add(new Forms.ToolStripSeparator());
+            menu.Items.Add(new NativeMenuItemSeparator());
+            menu.Items.Add(Item("Open dashboard", () => ShowDashboard(activate: true)));
+            menu.Items.Add(Item("Open this map on ksf.surf", () => OpenMapPage(currentMap)));
+            menu.Items.Add(Item("Refresh now", RefreshEverything));
+            menu.Items.Add(new NativeMenuItemSeparator());
             menu.Items.Add(keepOnTopItem);
-            menu.Items.Add(announce);
-            menu.Items.Add(autoOpen);
-            menu.Items.Add(startWithWindows);
-            menu.Items.Add("Open settings folder", null, (s, e) => OpenDataFolder());
-            menu.Items.Add(new Forms.ToolStripSeparator());
-            menu.Items.Add("Remove from CS:S...", null, (s, e) => Uninstall());
-            menu.Items.Add("Exit", null, (s, e) => ExitApp());
+            menu.Items.Add(Toggle("Run !m and !mrank on map load (KSF answers in chat)", settings.GetBool("run_server_commands"),
+                on => settings.Set("run_server_commands", on ? "1" : "0")));
+            menu.Items.Add(Toggle("Open the dashboard when CS:S starts", settings.GetBool("dashboard_on_game_start"),
+                on => settings.Set("dashboard_on_game_start", on ? "1" : "0")));
+            menu.Items.Add(Toggle("Start when you log in", Startup.IsEnabled, Startup.Set));
+            menu.Items.Add(Item("Open settings folder", OpenDataFolder));
+            menu.Items.Add(new NativeMenuItemSeparator());
+            menu.Items.Add(Item("Remove from CS:S...", Uninstall));
+            menu.Items.Add(Item("Exit", ExitApp));
 
-            tray = new Forms.NotifyIcon { Icon = AppIcon.Get(), Text = Program.AppName, ContextMenuStrip = menu, Visible = true };
-            tray.MouseClick += (s, e) => { if (e.Button == Forms.MouseButtons.Left) ShowDashboard(activate: true); };
+            tray = new TrayIcon { Icon = TrayImage(), ToolTipText = Program.AppName, Menu = menu, IsVisible = true };
+            tray.Clicked += (s, e) => ShowDashboard(activate: true);
+            if (Application.Current != null) TrayIcon.SetIcons(Application.Current, new TrayIcons { tray });
 
-            showWait = ThreadPool.RegisterWaitForSingleObject(showSignal,
-                (state, timedOut) => dispatcher.BeginInvoke(new Action(() => ShowDashboard(activate: true))), null, Timeout.Infinite, false);
+            // Starting KSF Companion again while it's running brings its dashboard up.
+            if (instance != null) instance.ShowRequested += () => Dispatcher.UIThread.Post(() => ShowDashboard(activate: true));
 
             parser.MapChanged += map => OnMapChanged(map, justJoined: true);
             parser.InGame += () =>
@@ -391,9 +403,9 @@ namespace KsfCompanion
 
             if (firstTime && setupError == null)
             {
-                tray.ShowBalloonTip(10000, "KSF Companion is set up",
-                    $"In-game: {keys.Save} saves the map for later, hold {keys.Card} for the KSF card, hold {keys.List} for your list.",
-                    Forms.ToolTipIcon.Info);
+                Desktop.Notify("KSF Companion is set up",
+                    $"In-game: {keys.Save} saves the map for later, hold {keys.Card} for the KSF card, hold {keys.List} for your list. " +
+                    "Add -usercon to CS:S's launch options so it can send commands to the game.");
             }
 
             if (gameRunning)
@@ -428,7 +440,7 @@ namespace KsfCompanion
                 SaveCheckpoint();
             }
             if (bindsToApply) ApplyBinds();
-            if (System.Windows.Input.Mouse.LeftButton == System.Windows.Input.MouseButtonState.Released)
+            if (window?.IsLeftButtonDown != true)
             {
                 if (turnSpeedToSave is int speed)
                 {
@@ -495,8 +507,9 @@ namespace KsfCompanion
                 if (gamePid != 0)
                 {
                     gamePid = 0;
-                    gameWindow = IntPtr.Zero;
+                    rcon.Close();
                     link = LinkState.NoGame;
+                    linkProblem = SendResult.Accepted;
                     yourServer = null;
                     onKsfServer = false;
                     connectedAddress = nextMapName = hudRequestedFor = null;
@@ -518,16 +531,15 @@ namespace KsfCompanion
                 gamePid = pid;
                 gameSeenAt = now;
                 gameStartedAt = ProcessStartTime(pid) ?? now;
-                gameWindow = IntPtr.Zero;
+                rcon.Close();
                 linkAttempts = 0;
+                linkProblem = SendResult.Accepted;
                 nextLinkTest = now.AddSeconds(8);
                 link = LinkState.Waiting;
                 vm.SetLive(currentMap != null);
                 StartSession(gameStartedAt);
                 OpenDashboardForGame();
             }
-            if (gameWindow == IntPtr.Zero || !NativeMethods.IsWindow(gameWindow))
-                gameWindow = GameBridge.FindGameWindow(pid);
         }
 
         /// <summary>
@@ -535,67 +547,60 @@ namespace KsfCompanion
         /// </summary>
         void OpenDashboardForGame()
         {
-            if (!settings.GetBool("dashboard_on_game_start") || Forms.Screen.AllScreens.Length < 2 || DashboardVisible) return;
+            if (!settings.GetBool("dashboard_on_game_start") || DashboardVisible) return;
             EnsureWindow();
+            if (window.Screens.ScreenCount < 2) return;
             if (window.IsOnSecondaryScreen) ShowDashboard(activate: false);
         }
 
         /// <summary>
-        /// Works out once per game launch whether the game runs commands sent over WM_COPYDATA: we send an
-        /// echo with a random tag and wait for it to show up in the console log.
+        /// Works out once per game launch whether the game takes commands over its remote console: we send an echo
+        /// with a random tag and wait for its answer (or for the tag to show up in the console log).
         /// </summary>
         async Task TestLinkAsync()
         {
             if (link != LinkState.Waiting) return;
-            if (gameWindow == IntPtr.Zero)
+            link = LinkState.Testing;
+
+            var nonce = "#" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            var seen = new TaskCompletionSource<bool>();
+            awaitedNonce = nonce;
+            nonceSeen = seen;
+
+            // Turning con_logfile on here also covers a game that was started before we were installed.
+            var result = await SendAsync($"con_logfile {GameConfig.LogFileName}; echo \"{GameConfig.LinkMarker} {nonce}\"");
+            if (result != SendResult.Accepted && result != SendResult.Timeout)
             {
-                nextLinkTest = DateTime.Now.AddSeconds(3);
+                awaitedNonce = null;
+                if (link != LinkState.Testing) return;
+                linkProblem = result;
+                // Still starting up, or never going to listen: without -usercon in its launch options the game doesn't.
+                var hopeless = result == SendResult.BadPassword || (result == SendResult.NotListening && !GameBridge.HasUserCon(gamePid));
+                link = hopeless || ++linkAttempts > 20 ? LinkState.Unavailable : LinkState.Waiting;
+                nextLinkTest = DateTime.Now.AddSeconds(4);
+                if (link == LinkState.Unavailable) Program.Trace($"game link: unavailable ({result}, -usercon: {GameBridge.HasUserCon(gamePid)})");
+                UpdateStatus();
                 return;
             }
 
-            link = LinkState.Testing;
-            var formats = linkFormat == LinkFormat.CommandLine
-                ? new[] { LinkFormat.CommandLine, LinkFormat.Raw }
-                : new[] { LinkFormat.Raw, LinkFormat.CommandLine };
-
-            foreach (var format in formats)
+            // The game answered the command itself, or it went out and the echo shows up in the log.
+            var winner = result == SendResult.Accepted ? seen.Task : await Task.WhenAny(seen.Task, Task.Delay(4000));
+            awaitedNonce = null;
+            if (link != LinkState.Testing) return;
+            if (winner != seen.Task)
             {
-                var nonce = "#" + Guid.NewGuid().ToString("N").Substring(0, 8);
-                var seen = new TaskCompletionSource<bool>();
-                awaitedNonce = nonce;
-                nonceSeen = seen;
-
-                // Turning con_logfile on here also covers a game that was started before we were installed.
-                var result = await SendAsync($"con_logfile {GameConfig.LogFileName}; echo \"{GameConfig.LinkMarker} {nonce}\"", format);
-                if (result == SendResult.Timeout || result == SendResult.NoWindow)
-                {
-                    awaitedNonce = null;
-                    if (link != LinkState.Testing) return;
-                    // Busy loading - try again in a moment.
-                    link = ++linkAttempts > 20 ? LinkState.Unavailable : LinkState.Waiting;
-                    nextLinkTest = DateTime.Now.AddSeconds(4);
-                    return;
-                }
-
-                var winner = await Task.WhenAny(seen.Task, Task.Delay(4000));
-                awaitedNonce = null;
-                if (link != LinkState.Testing) return;
-                if (winner == seen.Task)
-                {
-                    linkFormat = format;
-                    settings.Set("link_format", format == LinkFormat.Raw ? "raw" : "commandline");
-                    link = LinkState.Ready;
-                    UpdateStatus();
-                    // Makes the keys work right away, even in a game started before KSF Companion was installed.
-                    await PushAsync("exec ksf_companion");
-                    // Already on a map: "status" tells us the server (66 or 100 tick) and your in-game name.
-                    if (currentMap != null) await PushAsync("status");
-                    return;
-                }
+                link = ++linkAttempts > 20 ? LinkState.Unavailable : LinkState.Waiting;
+                nextLinkTest = DateTime.Now.AddSeconds(4);
+                return;
             }
-
-            link = LinkState.Unavailable;
+            link = LinkState.Ready;
+            linkProblem = SendResult.Accepted;
+            Program.Trace("game link: ready");
             UpdateStatus();
+            // Makes the keys work right away, even in a game started before KSF Companion was installed.
+            await PushAsync("exec ksf_companion");
+            // Already on a map: "status" tells us the server (66 or 100 tick) and your in-game name.
+            if (currentMap != null) await PushAsync("status");
         }
 
         void OnLine(string line)
@@ -1987,10 +1992,13 @@ namespace KsfCompanion
             }
             try
             {
-                Clipboard.SetText("!nominate " + map);
+                EnsureWindow();
+                var clipboard = TopLevel.GetTopLevel(window)?.Clipboard;
+                if (clipboard == null) throw new InvalidOperationException("no clipboard");
+                await clipboard.SetTextAsync("!nominate " + map);
                 vm.Toast = $"Copied  !nominate {map}  - paste it in KSF chat";
             }
-            catch (COMException)
+            catch (Exception ex) when (!(ex is OutOfMemoryException))
             {
                 vm.Toast = "Couldn't reach the clipboard - try again";
             }
@@ -1999,7 +2007,7 @@ namespace KsfCompanion
         void Join(string address)
         {
             if (string.IsNullOrEmpty(address)) return;
-            Process.Start("steam://connect/" + address);
+            Desktop.Open("steam://connect/" + address);
             vm.Toast = "Joining " + address + "...";
         }
 
@@ -2088,7 +2096,7 @@ namespace KsfCompanion
 
             lastMap = map;
             if (added.Count > 0)
-                tray.ShowBalloonTip(8000, Program.AppName, $"Saved {string.Join(", ", added)} - you pressed {keys.Save} while KSF Companion was closed.", Forms.ToolTipIcon.Info);
+                Desktop.Notify(Program.AppName, $"Saved {string.Join(", ", added)} - you pressed {keys.Save} while KSF Companion was closed.");
             return length;
         }
 
@@ -2116,19 +2124,26 @@ namespace KsfCompanion
         async Task<bool> PushAsync(string command)
         {
             if (link != LinkState.Ready) return false;
-            var result = await SendAsync(command, linkFormat);
-            return result == SendResult.Accepted || result == SendResult.Declined;
+            var result = await SendAsync(command);
+            if (result == SendResult.NotListening || result == SendResult.BadPassword)
+            {
+                // The game stopped listening (or wants another password): find out again what's going on.
+                link = LinkState.Waiting;
+                nextLinkTest = DateTime.Now.AddSeconds(3);
+                UpdateStatus();
+            }
+            // A command that timed out still went out: the game runs it once it's done loading.
+            return result == SendResult.Accepted || result == SendResult.Timeout;
         }
 
-        async Task<SendResult> SendAsync(string command, LinkFormat format)
+        async Task<SendResult> SendAsync(string command)
         {
-            var hwnd = gameWindow;
-            if (hwnd == IntPtr.Zero) return SendResult.NoWindow;
-            var text = GameBridge.Wrap(command, format);
+            var pid = gamePid;
+            if (pid == 0) return SendResult.NoGame;
             await sendLock.WaitAsync();
             try
             {
-                return await Task.Run(() => GameBridge.Send(hwnd, text));
+                return await rcon.SendAsync(pid, GameConfig.RconPassword(settings), command);
             }
             finally
             {
@@ -2164,7 +2179,9 @@ namespace KsfCompanion
             }
             else if (link == LinkState.Unavailable)
             {
-                text = $"Following your maps (hold {keys.Card} in-game for the card)";
+                text = linkProblem == SendResult.NotListening && !GameBridge.HasUserCon(gamePid)
+                    ? "Following your maps - add -usercon to CS:S's launch options for the rest"
+                    : $"Following your maps (hold {keys.Card} in-game for the card)";
                 connection = Connection.Limited;
             }
             else
@@ -2172,14 +2189,26 @@ namespace KsfCompanion
 
             vm.SetStatus(text, connection);
             // Only the states you can do something about get a notice under the title bar.
-            vm.Notice = config == null ? @"Couldn't find Counter-Strike: Source. Put your ...\Counter-Strike Source\cstrike folder in settings.ini (game_dir), then restart KSF Companion."
+            vm.Notice = config == null ? "Couldn't find Counter-Strike: Source. Put your .../Counter-Strike Source/cstrike folder in settings.ini (game_dir), then restart KSF Companion."
                 : setupError != null ? "Couldn't write to the CS:S cfg folder: " + setupError
                 : connection == Connection.Limited && gamePid != 0 && !LogIsActive() ? "CS:S is running but KSF Companion can't follow it yet. Restart the game once to finish setup."
-                : link == LinkState.Unavailable ? $"The game isn't taking commands from KSF Companion, so map info won't be posted in chat. The dashboard and {keys.Save} / {keys.Card} / {keys.List} still work."
+                : link == LinkState.Unavailable ? LinkNotice()
                 : null;
-            statusItem.Text = text.Length > 90 ? text.Substring(0, 87) + "..." : text;
+            statusItem.Header = text.Length > 90 ? text.Substring(0, 87) + "..." : text;
             var tip = Program.AppName + (currentMap != null ? " - " + currentMap : "");
-            tray.Text = tip.Length > 63 ? tip.Substring(0, 63) : tip;
+            tray.ToolTipText = tip.Length > 63 ? tip.Substring(0, 63) : tip;
+        }
+
+        /// <summary>What to do so the game takes commands from KSF Companion (nominate, teleport, live stage times...).</summary>
+        string LinkNotice()
+        {
+            var without = $"The dashboard and {keys.Save} / {keys.Card} / {keys.List} work without it.";
+            if (linkProblem == SendResult.NotListening && gamePid != 0 && !GameBridge.HasUserCon(gamePid))
+                return "To let KSF Companion send commands to the game (nominate, teleport, live stage times), add  -usercon  to CS:S's launch options " +
+                       "(Steam > Counter-Strike: Source > Properties > Launch Options), then restart the game. " + without;
+            if (linkProblem == SendResult.NotListening || linkProblem == SendResult.BadPassword)
+                return "CS:S was started before KSF Companion set it up, so it isn't taking commands yet. Restart the game once. " + without;
+            return "The game isn't taking commands from KSF Companion, so map info won't be posted in chat. " + without;
         }
 
         bool LogIsActive()
@@ -2231,12 +2260,12 @@ namespace KsfCompanion
             window.TopmostChanged += on =>
             {
                 settings.Set("window_topmost", on ? "1" : "0");
-                if (keepOnTopItem.Checked != on) keepOnTopItem.Checked = on;
+                if (keepOnTopItem.IsChecked != on) keepOnTopItem.IsChecked = on;
             };
             window.PlacementChanged += () => placementDirty = true;
-            window.IsVisibleChanged += (s, e) =>
+            window.PropertyChanged += (s, e) =>
             {
-                if (!window.IsVisible) return;
+                if (e.Property != Visual.IsVisibleProperty || !window.IsVisible) return;
                 nextServerPoll = nextRecentPoll = DateTime.MinValue;
             };
         }
@@ -2250,7 +2279,6 @@ namespace KsfCompanion
                 if (!window.IsVisible) window.ShowWithoutFocus();
                 return;
             }
-            window.ShowActivated = true;
             if (!window.IsVisible) window.Show();
             if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal;
             window.Activate();
@@ -2265,24 +2293,24 @@ namespace KsfCompanion
 
         void OpenMapPage(string map)
         {
-            if (!string.IsNullOrEmpty(map)) Process.Start(KsfApi.MapPage(map));
+            if (!string.IsNullOrEmpty(map)) Desktop.Open(KsfApi.MapPage(map));
         }
 
-        void OpenDataFolder() => Process.Start("explorer.exe", "\"" + Program.DataDir + "\"");
+        void OpenDataFolder() => Desktop.Open(Program.DataDir);
 
-        void Uninstall()
+        async void Uninstall()
         {
             if (config == null) return;
             if (GameBridge.FindGameProcessId() != 0)
             {
-                MessageBox.Show("Close Counter-Strike: Source first, then choose Remove again.", Program.AppName, MessageBoxButton.OK, MessageBoxImage.Information);
+                await Dialog.ShowAsync("Close Counter-Strike: Source first, then choose Remove again.");
                 return;
             }
             var question =
                 "Remove KSF Companion from Counter-Strike: Source?\n\n" +
                 $"This deletes its ksf_*.cfg files and its block in autoexec.cfg, and puts your old {keys.Save} / {keys.Card} / {keys.List} binds back.\n\n" +
-                "Your play-later list stays in Documents\\KSF Companion.";
-            if (MessageBox.Show(question, Program.AppName, MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+                "Your play-later list stays in " + Program.DataDir + ".";
+            if (!await Dialog.AskAsync(question, "Remove")) return;
 
             try
             {
@@ -2291,12 +2319,12 @@ namespace KsfCompanion
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
-                MessageBox.Show("Couldn't remove everything: " + ex.Message, Program.AppName, MessageBoxButton.OK, MessageBoxImage.Warning);
+                await Dialog.ShowAsync("Couldn't remove everything: " + ex.Message);
                 return;
             }
             timer.Stop();
             config = null;
-            MessageBox.Show("Removed from CS:S. KSF Companion will close now.", Program.AppName, MessageBoxButton.OK, MessageBoxImage.Information);
+            await Dialog.ShowAsync("Removed from CS:S. KSF Companion will close now.");
             ExitApp();
         }
 
@@ -2304,7 +2332,6 @@ namespace KsfCompanion
         {
             shutdown.Cancel();
             timer.Stop();
-            showWait.Unregister(null);
             SavePlacement();
             if (config != null)
             {
@@ -2313,15 +2340,23 @@ namespace KsfCompanion
                 try { config.WriteCard(new[] { "KSF Companion isn't running - start it to see KSF info for your map" }); }
                 catch (IOException) { }
             }
-            tray.Visible = false;
+            tray.IsVisible = false;
             tray.Dispose();
+            rcon.Dispose();
             if (window != null)
             {
                 window.AllowClose = true;
                 window.Close();
             }
             api.Dispose();
-            Application.Current.Shutdown();
+            (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Shutdown();
+        }
+
+        /// <summary>The tray icon: the app's icon drawn at the size trays use.</summary>
+        static WindowIcon TrayImage()
+        {
+            using var stream = AssetLoader.Open(new Uri("avares://KSFCompanion/Ui/Assets/icon-64.png"));
+            return new WindowIcon(new Bitmap(stream));
         }
     }
 }

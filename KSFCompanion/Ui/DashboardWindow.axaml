@@ -1,0 +1,1450 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:KsfCompanion.Ui"
+        x:Class="KsfCompanion.Ui.DashboardWindow"
+        Title="KSF Companion" Icon="/Ui/Assets/icon-256.png" Width="1400" Height="900" MinWidth="460" MinHeight="540"
+        Background="{StaticResource Bg0Brush}" Foreground="{StaticResource Text0Brush}"
+        FontFamily="{StaticResource BodyFont}" FontSize="13"
+        SystemDecorations="None" CanResize="True" WindowStartupLocation="Manual">
+
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Ctrl+R" Command="{Binding RefreshCommand}" />
+    </Window.KeyBindings>
+
+    <Window.Resources>
+        <!-- One of your times (map, stage or bonus): label, time, how close it is to the record (the bar fills smoothly;
+             full = record pace), the gap to the record, and your place on its leaderboard "#4,570 / 31,958".
+             Click a row to show its leaderboard; the arrow at the end teleports you there in game (sm_stage / sm_bonus / sm_restart). -->
+        <DataTemplate x:Key="ZoneRowTemplate">
+            <Panel Classes="zoneRow" Classes.current="{Binding IsCurrent}" Classes.notdone="{Binding !Done}" Classes.fresh="{Binding IsFresh}"
+                   Margin="-8,0,-8,1" Background="Transparent">
+                <Border Name="hover" Classes="fade" CornerRadius="9" Background="#0CFFFFFF" />
+                <Border Name="flash" CornerRadius="9" Background="#38FF7A1A" />
+                <Button Theme="{StaticResource BareButton}" Command="{Binding $parent[Window].DataContext.SelectLeaderboardCommand}" CommandParameter="{Binding Zone}"
+                        ToolTip.Tip="{Binding Tip}" ToolTip.ShowDelay="700">
+                    <Border Name="row" Classes="row" Padding="8,5">
+                        <Grid ColumnDefinitions="44,72,*,Auto,Auto,20">
+                            <Border Name="chip" CornerRadius="5" Padding="6,1" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                <TextBlock Name="label" Text="{Binding Label}" FontFamily="{StaticResource DisplayFont}" FontSize="11" FontWeight="SemiBold" />
+                            </Border>
+                            <TextBlock Name="time" Grid.Column="1" Classes="numbers" Text="{Binding Time}" FontSize="14" />
+                            <Panel Grid.Column="2" Height="3" Margin="2,0,14,0" VerticalAlignment="Center">
+                                <Border CornerRadius="1.5" Background="{StaticResource Bg3Brush}" />
+                                <ui:FillBar Fill="#8CFF7A1A" Radius="1.5" Animate="True" Value="{Binding Closeness}" />
+                            </Panel>
+                            <TextBlock Grid.Column="3" Classes="numbers" Text="{Binding Gap}" Foreground="{Binding GapBrush}" FontSize="12.5"
+                                       MinWidth="58" TextAlignment="Right" HorizontalAlignment="Right" />
+                            <!-- The Simple view leaves out the leaderboard place (the map's is on "your best" above). -->
+                            <TextBlock Grid.Column="4" MinWidth="108" TextAlignment="Right" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                       FontFamily="{StaticResource DisplayFont}" FontFeatures="+tnum" FontSize="12"
+                                       IsVisible="{Binding $parent[Window].DataContext.Layout.IsAdvanced}">
+                                <Run Text="{Binding Rank}" Foreground="{Binding RankBrush}" /><Run Text="{Binding RankTotal}" Foreground="{StaticResource Text2Brush}" />
+                            </TextBlock>
+                            <Button Name="go" Grid.Column="5" Classes="fade" Theme="{StaticResource BareButton}" Margin="0,-5,-8,-5" Padding="4,0,8,0"
+                                    Command="{Binding $parent[Window].DataContext.TeleportCommand}" CommandParameter="{Binding Zone}"
+                                    ToolTip.Tip="Teleport there" ToolTip.ShowDelay="400">
+                                <PathIcon Data="{StaticResource IconArrowRight}" Width="12" Height="12" Foreground="{StaticResource Text0Brush}"
+                                          HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </Button>
+                        </Grid>
+                    </Border>
+                </Button>
+            </Panel>
+        </DataTemplate>
+
+        <!-- Nominate page, tiles view: the map's picture, name, tier and details, and its buttons. -->
+        <DataTemplate x:Key="MapTileTemplate">
+            <Panel Classes="mapTile" Classes.current="{Binding IsCurrent}" Background="Transparent">
+                <Border CornerRadius="12" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" />
+                <Border Name="hover" Classes="fade" CornerRadius="12" Background="#0AFFFFFF" />
+                <Border CornerRadius="12" BorderBrush="#88FF7A1A" BorderThickness="1" IsVisible="{Binding IsCurrent}" />
+                <StackPanel>
+                    <ui:AspectBox Ratio="0.56" Margin="1,1,1,0">
+                        <Panel>
+                            <Border CornerRadius="11,11,0,0" Background="{StaticResource Bg3Brush}" />
+                            <Border CornerRadius="11,11,0,0" Background="{Binding Thumb, Converter={x:Static ui:ImageBrushConverter.Instance}}" />
+                            <Border CornerRadius="11,11,0,0">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                                        <GradientStop Color="#00000000" Offset="0.55" />
+                                        <GradientStop Color="#A0000000" Offset="1" />
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
+                            <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8" CornerRadius="5" Background="#D90B0B0F" Padding="6,1">
+                                <TextBlock Text="{Binding TierText}" Foreground="{Binding TierBrush}" FontFamily="{StaticResource DisplayFont}" FontSize="11" FontWeight="SemiBold" />
+                            </Border>
+                            <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" CornerRadius="5" Background="{StaticResource AccentBrush}" Padding="6,1"
+                                    IsVisible="{Binding IsCurrent}">
+                                <TextBlock Text="PLAYING NOW" Foreground="#1A0E05" FontFamily="{StaticResource DisplayFont}" FontSize="10.5" FontWeight="Bold" />
+                            </Border>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,9,7" IsVisible="{Binding HasRating}">
+                                <PathIcon Data="{StaticResource IconStarFilled}" Foreground="#F5C542" Width="11" Height="11" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Rating}" FontFamily="{StaticResource DisplayFont}" FontSize="11.5" Margin="4,0,0,0" />
+                            </StackPanel>
+                            <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="8,0,0,7" CornerRadius="5" Background="{StaticResource GoodBrush}" Padding="6,1,7,1"
+                                    IsVisible="{Binding IsDone}" ToolTip.Tip="{Binding DoneTip}">
+                                <StackPanel Orientation="Horizontal">
+                                    <PathIcon Data="{StaticResource IconCheck}" Foreground="#08180F" Width="10" Height="10" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding DoneText}" Foreground="#08180F" FontFamily="{StaticResource DisplayFont}" FontSize="11" FontWeight="Bold"
+                                               Margin="5,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                        </Panel>
+                    </ui:AspectBox>
+                    <StackPanel Margin="12,9,12,11">
+                        <TextBlock Text="{Binding Map}" FontFamily="{StaticResource DisplayFont}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Classes="muted" Text="{Binding Details}" FontSize="11.5" Margin="0,3,0,0" />
+                        <DockPanel Margin="0,9,0,0">
+                            <Button DockPanel.Dock="Right" Theme="{StaticResource AccentButton}" Padding="12,5"
+                                    Command="{Binding $parent[Window].DataContext.NominateCommand}" CommandParameter="{Binding Map}">
+                                <TextBlock Text="Nominate" FontSize="12" />
+                            </Button>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Theme="{StaticResource GhostButton}" Padding="9,5"
+                                        ToolTip.Tip="{Binding IsSaved, Converter={x:Static ui:PickConverter.Instance}, ConverterParameter='In your play-later list (click to take it off)|Save it to your play-later list'}"
+                                        Command="{Binding $parent[Window].DataContext.ToggleSavedCommand}" CommandParameter="{Binding Map}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <PathIcon Data="{StaticResource IconStar}" Width="12" Height="12" VerticalAlignment="Center" IsVisible="{Binding !IsSaved}" />
+                                        <PathIcon Data="{StaticResource IconStarFilled}" Foreground="#F5C542" Width="12" Height="12" VerticalAlignment="Center" IsVisible="{Binding IsSaved}" />
+                                        <TextBlock Text="{Binding IsSaved, Converter={x:Static ui:PickConverter.Instance}, ConverterParameter='Saved|Save'}"
+                                                   FontSize="12" Margin="6,0,0,0" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Theme="{StaticResource IconButton}" ToolTip.Tip="Open on ksf.surf" Margin="2,0,0,0"
+                                        Command="{Binding $parent[Window].DataContext.OpenLaterCommand}" CommandParameter="{Binding Map}">
+                                    <PathIcon Data="{StaticResource IconOpen}" />
+                                </Button>
+                            </StackPanel>
+                        </DockPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Panel>
+        </DataTemplate>
+
+        <!-- Nominate page, list view: small picture, name, tier and details in one row. -->
+        <DataTemplate x:Key="MapListTemplate">
+            <Panel Classes="mapRow" Classes.current="{Binding IsCurrent}" Margin="0,0,0,3" Background="Transparent">
+                <Border Name="hover" Classes="fade" CornerRadius="9" Background="#0CFFFFFF" />
+                <Border Name="row" Classes="row" />
+                <Grid Margin="7,6" ColumnDefinitions="Auto,*,Auto,Auto">
+                    <Panel Width="{Binding $parent[Window].DataContext.ListThumbWidth}" Height="{Binding $parent[Window].DataContext.ListThumbHeight}">
+                        <Border CornerRadius="7" Background="{StaticResource Bg3Brush}" />
+                        <Border CornerRadius="7" Background="{Binding Thumb, Converter={x:Static ui:ImageBrushConverter.Instance}}" />
+                    </Panel>
+                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding Map}" FontFamily="{StaticResource DisplayFont}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="playing now" Foreground="{StaticResource AccentBrush}" FontSize="11.5" Margin="10,0,0,0" VerticalAlignment="Center"
+                                       IsVisible="{Binding IsCurrent}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <Border CornerRadius="5" Padding="6,1" Background="{Binding TierSoftBrush}">
+                                <TextBlock Text="{Binding TierText}" Foreground="{Binding TierBrush}" FontSize="11" FontWeight="SemiBold" FontFamily="{StaticResource DisplayFont}" />
+                            </Border>
+                            <Border CornerRadius="5" Padding="6,1,7,1" Margin="6,0,0,0" Background="{StaticResource GoodSoftBrush}"
+                                    IsVisible="{Binding IsDone}" ToolTip.Tip="{Binding DoneTip}">
+                                <StackPanel Orientation="Horizontal">
+                                    <PathIcon Data="{StaticResource IconCheck}" Foreground="{StaticResource GoodBrush}" Width="9" Height="9" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding DoneText}" Foreground="{StaticResource GoodBrush}" FontSize="11" FontWeight="SemiBold" FontFamily="{StaticResource DisplayFont}"
+                                               Margin="4,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                            <TextBlock Classes="muted" Text="{Binding Details}" Margin="8,0,0,0" FontSize="11.5" />
+                            <TextBlock Classes="muted" Text="{Binding Mappers}" Margin="10,0,0,0" FontSize="11.5" />
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,0" IsVisible="{Binding HasRating}">
+                        <PathIcon Data="{StaticResource IconStarFilled}" Foreground="#F5C542" Width="11" Height="11" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Rating}" FontFamily="{StaticResource DisplayFont}" FontSize="12" Margin="4,0,0,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Theme="{StaticResource GhostButton}" Padding="10,5"
+                                ToolTip.Tip="{Binding IsSaved, Converter={x:Static ui:PickConverter.Instance}, ConverterParameter='In your play-later list (click to take it off)|Save it to your play-later list'}"
+                                Command="{Binding $parent[Window].DataContext.ToggleSavedCommand}" CommandParameter="{Binding Map}">
+                            <StackPanel Orientation="Horizontal">
+                                <PathIcon Data="{StaticResource IconStar}" Width="12" Height="12" VerticalAlignment="Center" IsVisible="{Binding !IsSaved}" />
+                                <PathIcon Data="{StaticResource IconStarFilled}" Foreground="#F5C542" Width="12" Height="12" VerticalAlignment="Center" IsVisible="{Binding IsSaved}" />
+                                <TextBlock Text="{Binding IsSaved, Converter={x:Static ui:PickConverter.Instance}, ConverterParameter='Saved|Save for later'}"
+                                           FontSize="12" Margin="6,0,0,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button Theme="{StaticResource IconButton}" ToolTip.Tip="Open on ksf.surf" Margin="4,0,0,0"
+                                Command="{Binding $parent[Window].DataContext.OpenLaterCommand}" CommandParameter="{Binding Map}">
+                            <PathIcon Data="{StaticResource IconOpen}" />
+                        </Button>
+                        <Button Theme="{StaticResource AccentButton}" Padding="12,5" Margin="6,0,0,0"
+                                Command="{Binding $parent[Window].DataContext.NominateCommand}" CommandParameter="{Binding Map}">
+                            <TextBlock Text="Nominate" FontSize="12" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Panel>
+        </DataTemplate>
+
+        <!-- Binds page: the key button on each row. Waiting for a key: orange; no key yet: quiet. -->
+        <ControlTheme x:Key="BindKeyButton" TargetType="Button" BasedOn="{StaticResource GhostButton}">
+            <Setter Property="MinWidth" Value="118" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Foreground" Value="{StaticResource Text0Brush}" />
+            <Setter Property="Background" Value="{StaticResource Bg2Brush}" />
+            <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="13" />
+            <Style Selector="^.nokey">
+                <Setter Property="Foreground" Value="{StaticResource Text2Brush}" />
+                <Setter Property="FontWeight" Value="Normal" />
+                <Setter Property="Background" Value="Transparent" />
+            </Style>
+            <Style Selector="^.capturing">
+                <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+            </Style>
+        </ControlTheme>
+
+        <DataTemplate x:Key="BindRowTemplate">
+            <Panel Classes="bindRow" Margin="-8,0,-8,2" Background="Transparent">
+                <Border Name="hover" CornerRadius="9" Background="#0AFFFFFF" />
+                <Grid Margin="8,7" ColumnDefinitions="*,Auto,Auto,Auto,30">
+                    <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold" Foreground="{StaticResource Text0Brush}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Classes="muted" Text="{Binding Help}" FontSize="11.5" Margin="0,2,0,0" TextWrapping="Wrap" TextTrimming="None" />
+                        <TextBlock Text="{Binding Replaces}" FontSize="11" Foreground="#C9A15A" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"
+                                   IsVisible="{Binding HasReplaces}"
+                                   ToolTip.Tip="What this key did in the game before - it gets that back if you take the bind off" />
+                    </StackPanel>
+                    <Border Grid.Column="1" Classes="chip" Margin="0,0,10,0" Background="#0DFFFFFF">
+                        <TextBlock Text="{Binding CommandText}" FontFamily="{StaticResource MonoFont}" FontSize="11.5" Foreground="{StaticResource Text1Brush}" />
+                    </Border>
+                    <!-- Keys your game already has on this (your own binds in config.cfg). -->
+                    <ItemsControl Grid.Column="2" ItemsSource="{Binding InGame}" VerticalAlignment="Center" Margin="0,0,8,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{StaticResource Bg2Brush}" BorderBrush="{StaticResource Line2Brush}" BorderThickness="1,1,1,2" CornerRadius="7"
+                                        Padding="10,3,3,3" Margin="0,0,6,0" ToolTip.Tip="{Binding Tip}" ToolTip.ShowDelay="500">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Label}" FontFamily="{StaticResource DisplayFont}" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                                        <Button Theme="{StaticResource IconButton}" Width="20" Height="20" Margin="6,0,0,0"
+                                                Command="{Binding $parent[Window].DataContext.Binds.RemoveGameKeyCommand}" CommandParameter="{Binding}">
+                                            <PathIcon Data="{StaticResource IconClose}" Width="8" Height="8" />
+                                        </Button>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Button Grid.Column="3" Theme="{StaticResource BindKeyButton}" VerticalAlignment="Center"
+                            Classes.nokey="{Binding !HasKey}" Classes.capturing="{Binding IsCapturing}"
+                            Command="{Binding $parent[Window].DataContext.Binds.CaptureCommand}" CommandParameter="{Binding}" Content="{Binding KeyLabel}"
+                            ToolTip.Tip="Click, then press the key (or a mouse button / the wheel). Esc cancels." ToolTip.ShowDelay="600" />
+                    <Button Grid.Column="4" Theme="{StaticResource IconButton}" Width="24" Height="24" HorizontalAlignment="Right"
+                            Command="{Binding $parent[Window].DataContext.Binds.ClearCommand}" CommandParameter="{Binding}"
+                            ToolTip.Tip="Take the key off (it gets back what it did before)">
+                        <Button.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="HasKey" />
+                                <Binding Path="CanClear" />
+                                <Binding Path="!IsOwn" />
+                            </MultiBinding>
+                        </Button.IsVisible>
+                        <PathIcon Data="{StaticResource IconClose}" Width="10" Height="10" />
+                    </Button>
+                    <Button Grid.Column="4" Theme="{StaticResource IconButton}" Width="24" Height="24" HorizontalAlignment="Right"
+                            Command="{Binding $parent[Window].DataContext.Binds.RemoveOwnCommand}" CommandParameter="{Binding}"
+                            ToolTip.Tip="Remove this command">
+                        <Button.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="IsOwn" />
+                                <Binding Path="!HasInGame" />
+                            </MultiBinding>
+                        </Button.IsVisible>
+                        <PathIcon Data="{StaticResource IconDelete}" Width="12" Height="12" />
+                    </Button>
+                </Grid>
+            </Panel>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Window.Styles>
+        <Style Selector="Border.tile">
+            <Setter Property="Background" Value="{StaticResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Margin" Value="0,0,12,12" />
+            <Setter Property="Padding" Value="16,14" />
+            <Setter Property="MinHeight" Value="132" />
+        </Style>
+        <Style Selector="Border.row">
+            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="Border.keyCap">
+            <Setter Property="Background" Value="{StaticResource Bg2Brush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Line2Brush}" />
+            <Setter Property="BorderThickness" Value="1,1,1,2" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Padding" Value="6,1" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <!-- The small caps label in front of a group of filter buttons: TIER, TYPE, SHOW, SORT. -->
+        <Style Selector="TextBlock.filterLabel">
+            <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="{StaticResource Text2Brush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+        </Style>
+        <!-- A frosted badge on the map picture. -->
+        <Style Selector="Border.badge">
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="#A6000000" />
+            <Setter Property="Padding" Value="9,4" />
+        </Style>
+        <Style Selector="Border.segments">
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Background" Value="{StaticResource Bg2Brush}" />
+            <Setter Property="Padding" Value="2" />
+        </Style>
+
+        <!-- Pulsing "live" dots. -->
+        <Style Selector="Ellipse.pulse">
+            <Style.Animations>
+                <Animation Duration="0:0:0.9" IterationCount="INFINITE" PlaybackDirection="Alternate">
+                    <KeyFrame Cue="0%">
+                        <Setter Property="Opacity" Value="1" />
+                    </KeyFrame>
+                    <KeyFrame Cue="100%">
+                        <Setter Property="Opacity" Value="0.22" />
+                    </KeyFrame>
+                </Animation>
+            </Style.Animations>
+        </Style>
+
+        <!-- Hover layers start hidden; hovering the row brings them in (they fade: class "fade"). -->
+        <Style Selector="Border#hover">
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="Panel.zoneRow:pointerover > Border#hover, Panel.mapTile:pointerover > Border#hover, Panel.mapRow:pointerover > Border#hover, Panel.bindRow:pointerover > Border#hover">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+
+        <!-- your times rows -->
+        <Style Selector="Panel.zoneRow > Border#flash">
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="Panel.zoneRow.fresh > Border#flash">
+            <Style.Animations>
+                <Animation Duration="0:0:4.5">
+                    <KeyFrame Cue="0%">
+                        <Setter Property="Opacity" Value="0" />
+                    </KeyFrame>
+                    <KeyFrame Cue="5.5%">
+                        <Setter Property="Opacity" Value="1" />
+                    </KeyFrame>
+                    <KeyFrame Cue="66.6%">
+                        <Setter Property="Opacity" Value="1" />
+                    </KeyFrame>
+                    <KeyFrame Cue="100%">
+                        <Setter Property="Opacity" Value="0" />
+                    </KeyFrame>
+                </Animation>
+            </Style.Animations>
+        </Style>
+        <Style Selector="Panel.zoneRow Border#chip">
+            <Setter Property="Background" Value="{StaticResource Bg3Brush}" />
+        </Style>
+        <Style Selector="Panel.zoneRow TextBlock#label">
+            <Setter Property="Foreground" Value="{StaticResource Text1Brush}" />
+        </Style>
+        <Style Selector="Panel.zoneRow Button#go">
+            <Setter Property="Opacity" Value="0.35" />
+        </Style>
+        <Style Selector="Panel.zoneRow:pointerover Button#go">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Panel.zoneRow.notdone TextBlock#time">
+            <Setter Property="Foreground" Value="{StaticResource Text2Brush}" />
+        </Style>
+        <Style Selector="Panel.zoneRow.current Border#row">
+            <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
+            <Setter Property="BorderBrush" Value="#66FF7A1A" />
+        </Style>
+        <Style Selector="Panel.zoneRow.current Border#chip">
+            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+        </Style>
+        <Style Selector="Panel.zoneRow.current TextBlock#label">
+            <Setter Property="Foreground" Value="#1A0E05" />
+        </Style>
+
+        <Style Selector="Panel.mapRow.current > Border#row">
+            <Setter Property="BorderBrush" Value="#55FF7A1A" />
+        </Style>
+
+        <!-- leaderboard -->
+        <Style Selector="Border.leader.you">
+            <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
+            <Setter Property="BorderBrush" Value="#66FF7A1A" />
+        </Style>
+
+        <!-- your server, live -->
+        <Style Selector="Border.livePlayer.you">
+            <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
+        </Style>
+        <Style Selector="Border.livePlayer TextBlock#name">
+            <Setter Property="Foreground" Value="{StaticResource Text0Brush}" />
+        </Style>
+        <Style Selector="Border.livePlayer.you TextBlock#name">
+            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Border.livePlayer.nozone Border#zone">
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+
+        <!-- your level: the tick rate you're playing on stands out -->
+        <Style Selector="StackPanel.level Border#tick">
+            <Setter Property="Background" Value="{StaticResource Bg3Brush}" />
+        </Style>
+        <Style Selector="StackPanel.level TextBlock#tickText">
+            <Setter Property="Foreground" Value="{StaticResource Text1Brush}" />
+        </Style>
+        <Style Selector="StackPanel.level ui|FillBar#bar">
+            <Setter Property="Fill" Value="#8CFF7A1A" />
+        </Style>
+        <Style Selector="StackPanel.level.current Border#tick">
+            <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
+        </Style>
+        <Style Selector="StackPanel.level.current TextBlock#tickText">
+            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+        </Style>
+        <Style Selector="StackPanel.level.current ui|FillBar#bar">
+            <Setter Property="Fill" Value="{StaticResource AccentBrush}" />
+        </Style>
+
+        <!-- play later and servers: actions come forward on hover -->
+        <Style Selector="Border.laterRow StackPanel#actions">
+            <Setter Property="Opacity" Value="0.4" />
+        </Style>
+        <Style Selector="Border.laterRow:pointerover StackPanel#actions">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Border.laterRow:pointerover Border#hover, Border.serverRow:pointerover Border#hover">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Border.laterRow.current">
+            <Setter Property="BorderBrush" Value="#55FF7A1A" />
+        </Style>
+        <Style Selector="Border.serverRow Button#join">
+            <Setter Property="Opacity" Value="0.35" />
+        </Style>
+        <Style Selector="Border.serverRow:pointerover Button#join">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Border.serverRow.yours">
+            <Setter Property="BorderBrush" Value="#55FF7A1A" />
+            <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
+        </Style>
+
+        <!-- VIP commands get a gold outline and a badge. -->
+        <Style Selector="Border.bindGroup.vip">
+            <Setter Property="BorderBrush" Value="#B3E8B84A" />
+            <Setter Property="BorderThickness" Value="1.5" />
+            <Setter Property="Background" Value="#120E0C06" />
+        </Style>
+
+        <Style Selector="Border#Toast">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.22" />
+                </Transitions>
+            </Setter>
+        </Style>
+    </Window.Styles>
+
+    <Panel>
+        <Border Name="Root" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Background="{StaticResource Bg0Brush}">
+            <Grid RowDefinitions="44,Auto,*">
+
+                <!-- The map's colours, very softly, behind everything (a tiny blurred copy of its picture). -->
+                <Panel Grid.RowSpan="3" IsHitTestVisible="False" ClipToBounds="True">
+                    <Border Name="Ambient" Opacity="0" RenderOptions.BitmapInterpolationMode="HighQuality"
+                            Background="{Binding AmbientImage, Converter={x:Static ui:ImageBrushConverter.Instance}}" />
+                    <Border>
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                                <GradientStop Color="#AE07070A" Offset="0" />
+                                <GradientStop Color="#D807070A" Offset="0.4" />
+                                <GradientStop Color="#F207070A" Offset="1" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+                </Panel>
+
+                <!-- ============ Title bar: logo and you on the left, window controls on the right. Drag it to move the window. ============ -->
+                <Grid Name="TitleBar" Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto" Background="Transparent">
+                    <Grid.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Name="KeepOnTopMenuItem" Header="Keep on top" ToggleType="CheckBox" />
+                        </ContextMenu>
+                    </Grid.ContextMenu>
+
+                    <StackPanel Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
+                        <Image Source="/Ui/Assets/icon-64.png" Width="26" Height="26" RenderOptions.BitmapInterpolationMode="HighQuality" />
+                        <TextBlock Text="KSF" FontFamily="{StaticResource DisplayFont}" FontWeight="Bold" FontSize="14.5" Margin="10,0,0,0" VerticalAlignment="Center" />
+                        <TextBlock Text="COMPANION" FontFamily="{StaticResource DisplayFont}" FontSize="14.5" Foreground="{StaticResource Text2Brush}" Margin="5,0,0,0" VerticalAlignment="Center" />
+                        <!-- pages -->
+                        <StackPanel Orientation="Horizontal" Margin="18,0,0,0">
+                            <Button Theme="{StaticResource TabButton}" Content="Dashboard" Command="{Binding ShowPageCommand}" CommandParameter="dashboard" Classes.on="{Binding IsDashboardPage}" />
+                            <Button Theme="{StaticResource TabButton}" Content="Nominate" Command="{Binding ShowPageCommand}" CommandParameter="nominate" Classes.on="{Binding IsNominatePage}" />
+                            <Button Theme="{StaticResource TabButton}" Content="Binds" Command="{Binding ShowPageCommand}" CommandParameter="binds" Classes.on="{Binding IsBindsPage}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- The dot on your avatar is the CS:S connection (green = connected). Hover it for details. -->
+                    <StackPanel Name="PlayerChip" Grid.Column="1" Orientation="Horizontal" Margin="22,0,0,0" VerticalAlignment="Center" Background="Transparent"
+                                ToolTip.Tip="{Binding StatusText}" ToolTip.ShowDelay="300">
+                        <Panel Width="26" Height="26">
+                            <Ellipse Fill="{StaticResource Bg3Brush}" />
+                            <PathIcon Data="{StaticResource IconPerson}" Width="13" Height="13" Foreground="{StaticResource Text2Brush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <Ellipse Fill="{Binding Avatar, Converter={x:Static ui:ImageBrushConverter.Instance}}" />
+                            <Ellipse Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-2,-2"
+                                     Fill="{Binding StatusBrush}" Stroke="{StaticResource Bg0Brush}" StrokeThickness="2" />
+                        </Panel>
+                        <TextBlock Text="{Binding PlayerLabel}" FontWeight="SemiBold" FontSize="12.5" Margin="10,0,0,0" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding PlayerDetail}" Foreground="{StaticResource Text2Brush}" FontSize="12" Margin="10,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="0,0,8,0" VerticalAlignment="Center">
+                        <!-- Simple (the essentials, bigger and cleaner) or Advanced (every detail), and which parts are on the dashboard. -->
+                        <Border CornerRadius="7" Background="#0EFFFFFF" Padding="2" VerticalAlignment="Center" Margin="0,0,6,0" IsVisible="{Binding IsDashboardPage}">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Theme="{StaticResource SegmentButton}" Content="Simple" Command="{Binding SetViewCommand}" CommandParameter="simple"
+                                        Classes.on="{Binding Layout.IsSimple}" ToolTip.Tip="The essentials, bigger and cleaner" ToolTip.ShowDelay="600" />
+                                <Button Theme="{StaticResource SegmentButton}" Content="Advanced" Command="{Binding SetViewCommand}" CommandParameter="advanced"
+                                        Classes.on="{Binding Layout.IsAdvanced}" ToolTip.Tip="Every detail" ToolTip.ShowDelay="600" />
+                            </StackPanel>
+                        </Border>
+                        <ToggleButton Name="CustomizeButton" Theme="{StaticResource TitleToggle}" Margin="0,0,10,0" VerticalAlignment="Center" IsVisible="{Binding IsDashboardPage}">
+                            <StackPanel Orientation="Horizontal">
+                                <PathIcon Data="{StaticResource IconCustomize}" Width="13" Height="13" VerticalAlignment="Center" />
+                                <TextBlock Text="Customize" Margin="7,0,0,0" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Layout.HiddenText}" Margin="7,0,0,0" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" FontSize="11.5" />
+                            </StackPanel>
+                        </ToggleButton>
+                        <Popup Name="CustomizePopup" PlacementTarget="{Binding #CustomizeButton}" Placement="BottomEdgeAlignedRight" VerticalOffset="8"
+                               IsLightDismissEnabled="True" IsOpen="{Binding #CustomizeButton.IsChecked, Mode=TwoWay}">
+                            <Border Width="300" Background="#FA121217" BorderBrush="{StaticResource Line2Brush}" BorderThickness="1" CornerRadius="12" Padding="10,14,10,12">
+                                <StackPanel>
+                                    <!-- How big everything is drawn. -->
+                                    <DockPanel Margin="9,0,9,12">
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Layout.ScaleText}" FontFamily="{StaticResource DisplayFont}" FontSize="12.5"
+                                                   Width="40" TextAlignment="Right" VerticalAlignment="Center" />
+                                        <TextBlock DockPanel.Dock="Left" Classes="section" Text="SIZE" Width="44" VerticalAlignment="Center" />
+                                        <Slider Theme="{StaticResource SizeSlider}" Minimum="0.8" Maximum="1.5" Margin="4,0,10,0" VerticalAlignment="Center"
+                                                Value="{Binding Layout.Scale, Mode=TwoWay}" SmallChange="0.05" LargeChange="0.1" />
+                                    </DockPanel>
+                                    <Border Height="1" Background="{StaticResource LineBrush}" Margin="-10,0,-10,12" />
+                                    <TextBlock Classes="section" Text="SHOW ON THE DASHBOARD" Margin="9,0,0,4" />
+                                    <TextBlock Classes="muted" Text="Or hover a part and click the × on its corner." Margin="9,0,0,8" FontSize="11.5" />
+                                    <ItemsControl ItemsSource="{Binding Layout.Parts}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <CheckBox Theme="{StaticResource SwitchRow}" Content="{Binding Label}" IsChecked="{Binding IsShown, Mode=TwoWay}" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <Button Theme="{StaticResource GhostButton}" Content="Show everything" Command="{Binding ShowAllPartsCommand}" HorizontalAlignment="Left"
+                                            Margin="9,10,0,0" Padding="12,5" />
+                                </StackPanel>
+                            </Border>
+                        </Popup>
+                        <Button Name="MinButton" Theme="{StaticResource WindowButton}">
+                            <PathIcon Data="{StaticResource IconMinimize}" Width="11" Height="11" />
+                        </Button>
+                        <Button Name="MaxButton" Theme="{StaticResource WindowButton}">
+                            <PathIcon Name="MaxIcon" Data="{StaticResource IconMaximize}" Width="11" Height="11" />
+                        </Button>
+                        <Button Name="CloseButton" Theme="{StaticResource WindowCloseButton}">
+                            <PathIcon Data="{StaticResource IconClose}" Width="11" Height="11" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Only when something needs you (e.g. add -usercon to CS:S's launch options). -->
+                <Border Grid.Row="1" Margin="20,0,20,8" CornerRadius="10" Background="#14F5B83D" BorderBrush="#40F5B83D" BorderThickness="1" Padding="14,9"
+                        IsVisible="{Binding HasNotice}">
+                    <DockPanel>
+                        <PathIcon DockPanel.Dock="Left" Data="{StaticResource IconWarning}" Foreground="#F5B83D" Width="14" Height="14" VerticalAlignment="Center" />
+                        <SelectableTextBlock Text="{Binding Notice}" FontSize="12.5" Margin="10,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
+                    </DockPanel>
+                </Border>
+
+                <!-- ============ Nominate page: rock the vote, and every KSF map to search and nominate ============ -->
+                <LayoutTransformControl Name="NominateZoom" Grid.Row="2" IsVisible="{Binding IsNominatePage}">
+                    <Grid Name="NominatePage" Margin="20,6,20,8" RowDefinitions="Auto,*">
+                        <!-- What's playing and rock the vote, then the search and the filters - one card. -->
+                        <Border Classes="card" Padding="18,14,18,12">
+                            <StackPanel>
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Theme="{StaticResource AccentButton}" Command="{Binding RtvCommand}" VerticalAlignment="Center" Padding="16,8" Margin="16,0,0,0"
+                                            ToolTip.ShowDelay="500"
+                                            ToolTip.Tip="Rock the vote asks the server to change the map; Nominate puts a map on the next vote. Both are sent from the console (sm_rtv, sm_nominate), so nothing is typed in chat - the server announces the votes as usual.">
+                                        <StackPanel Orientation="Horizontal">
+                                            <PathIcon Classes="glyph" Data="{StaticResource IconRepeat}" />
+                                            <TextBlock Text="Rock the vote" Margin="8,0,0,0" />
+                                        </StackPanel>
+                                    </Button>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Classes="filterLabel" Text="PLAYING NOW" Margin="0,0,12,0" />
+                                        <TextBlock Text="{Binding MapName}" FontFamily="{StaticResource DisplayFont}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <Border Classes="chip" Margin="12,0,6,0" IsVisible="{Binding HasLiveTime}">
+                                            <TextBlock Classes="chipText" Text="{Binding LiveTimeLeft}" />
+                                        </Border>
+                                        <Border Classes="chip" IsVisible="{Binding HasNextMap}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Classes="chipText" Text="NEXT" Foreground="{StaticResource AccentBrush}" />
+                                                <TextBlock Classes="chipText" Text="{Binding NextMap}" Margin="6,0,0,0" />
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </DockPanel>
+                                <Border Height="1" Background="{StaticResource LineBrush}" Margin="-18,14,-18,14" />
+
+                                <DockPanel>
+                                    <Border DockPanel.Dock="Right" Margin="12,0,0,0" Classes="segments" VerticalAlignment="Center">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Theme="{StaticResource SegmentButton}" Command="{Binding SetMapViewCommand}" CommandParameter="tiles" Classes.on="{Binding IsTileView}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <PathIcon Classes="glyph" Data="{StaticResource IconTiles}" Width="11" Height="11" />
+                                                    <TextBlock Text="Tiles" Margin="6,0,0,0" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Theme="{StaticResource SegmentButton}" Command="{Binding SetMapViewCommand}" CommandParameter="list" Classes.on="{Binding IsListView}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <PathIcon Classes="glyph" Data="{StaticResource IconList}" Width="11" Height="11" />
+                                                    <TextBlock Text="List" Margin="6,0,0,0" />
+                                                </StackPanel>
+                                            </Button>
+                                        </StackPanel>
+                                    </Border>
+                                    <!-- How big the tiles (and the list's pictures) are. -->
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="18,0,6,0" VerticalAlignment="Center" Background="Transparent"
+                                                ToolTip.Tip="Tile size" ToolTip.ShowDelay="500">
+                                        <PathIcon Data="{StaticResource IconZoomOut}" Width="12" Height="12" Foreground="{StaticResource Text2Brush}" VerticalAlignment="Center" />
+                                        <Slider Theme="{StaticResource SizeSlider}" Width="130" Minimum="200" Maximum="460" Margin="9,0" VerticalAlignment="Center"
+                                                Value="{Binding TileSize, Mode=TwoWay}" SmallChange="20" LargeChange="40" />
+                                        <PathIcon Data="{StaticResource IconZoomIn}" Width="14" Height="14" Foreground="{StaticResource Text2Brush}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <TextBox Name="MapSearchBox" Classes="search" Text="{Binding MapSearch, Delay=150}" Watermark="Search KSF maps or mappers...">
+                                        <TextBox.InnerLeftContent>
+                                            <PathIcon Data="{StaticResource IconSearch}" Width="14" Height="14" Foreground="{StaticResource Text2Brush}" Margin="13,0,2,0" />
+                                        </TextBox.InnerLeftContent>
+                                        <TextBox.InnerRightContent>
+                                            <Button Theme="{StaticResource IconButton}" Width="26" Height="26" Margin="0,0,5,0"
+                                                    Command="{Binding ClearMapSearchCommand}" IsVisible="{Binding HasMapSearch}">
+                                                <PathIcon Data="{StaticResource IconClose}" Width="10" Height="10" />
+                                            </Button>
+                                        </TextBox.InnerRightContent>
+                                    </TextBox>
+                                </DockPanel>
+                                <DockPanel Margin="0,12,0,0">
+                                    <TextBlock DockPanel.Dock="Right" Classes="muted" Text="{Binding MapStatus}" FontSize="11.5" Margin="12,0,0,6" VerticalAlignment="Bottom" />
+                                    <WrapPanel>
+                                        <TextBlock Classes="filterLabel" Text="TIER" Margin="0,0,8,6" />
+                                        <Border Classes="segments" Margin="0,0,20,6">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Theme="{StaticResource SegmentButton}" Content="All" Command="{Binding SetMapTierCommand}" CommandParameter="0" Classes.on="{Binding MapTier, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=0}" />
+                                                <Button Theme="{StaticResource SegmentButton}" Content="T1" Command="{Binding SetMapTierCommand}" CommandParameter="1" Classes.on="{Binding MapTier, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=1}" />
+                                                <Button Theme="{StaticResource SegmentButton}" Content="T2" Command="{Binding SetMapTierCommand}" CommandParameter="2" Classes.on="{Binding MapTier, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=2}" />
+                                                <Button Theme="{StaticResource SegmentButton}" Content="T3" Command="{Binding SetMapTierCommand}" CommandParameter="3" Classes.on="{Binding MapTier, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=3}" />
+                                                <Button Theme="{StaticResource SegmentButton}" Content="T4" Command="{Binding SetMapTierCommand}" CommandParameter="4" Classes.on="{Binding MapTier, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=4}" />
+                                                <Button Theme="{StaticResource SegmentButton}" Content="T5" Command="{Binding SetMapTierCommand}" CommandParameter="5" Classes.on="{Binding MapTier, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=5}" />
+                                                <Button Theme="{StaticResource SegmentButton}" Content="T6" Command="{Binding SetMapTierCommand}" CommandParameter="6" Classes.on="{Binding MapTier, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=6}" />
+                                                <Button Theme="{StaticResource SegmentButton}" Content="T7" Command="{Binding SetMapTierCommand}" CommandParameter="7" Classes.on="{Binding MapTier, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=7}" />
+                                                <Button Theme="{StaticResource SegmentButton}" Content="T8" Command="{Binding SetMapTierCommand}" CommandParameter="8" Classes.on="{Binding MapTier, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=8}" />
+                                            </StackPanel>
+                                        </Border>
+                                        <TextBlock Classes="filterLabel" Text="TYPE" Margin="0,0,8,6" />
+                                        <Border Classes="segments" Margin="0,0,20,6"
+                                                ToolTip.Tip="Linear maps (one run with checkpoints) or staged maps (separate stages)" ToolTip.ShowDelay="700">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Theme="{StaticResource SegmentButton}" Content="Any" Command="{Binding SetMapKindCommand}" CommandParameter="all" Classes.on="{Binding MapKind, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=all}" />
+                                                <Button Theme="{StaticResource SegmentButton}" Content="Linear" Command="{Binding SetMapKindCommand}" CommandParameter="linear" Classes.on="{Binding MapKind, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=linear}" />
+                                                <Button Theme="{StaticResource SegmentButton}" Content="Staged" Command="{Binding SetMapKindCommand}" CommandParameter="staged" Classes.on="{Binding MapKind, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=staged}" />
+                                            </StackPanel>
+                                        </Border>
+                                        <TextBlock Classes="filterLabel" Text="SHOW" Margin="0,0,8,6" />
+                                        <Border Classes="segments" Margin="0,0,20,6"
+                                                ToolTip.Tip="Maps you've finished on KSF (this tick rate), or the ones you haven't yet" ToolTip.ShowDelay="700">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Theme="{StaticResource SegmentButton}" Content="All" Command="{Binding SetMapDoneCommand}" CommandParameter="all" Classes.on="{Binding MapDone, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=all}" />
+                                                <Button Theme="{StaticResource SegmentButton}" Content="Not done" Command="{Binding SetMapDoneCommand}" CommandParameter="todo" Classes.on="{Binding MapDone, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=todo}" />
+                                                <Button Theme="{StaticResource SegmentButton}" Content="Done" Command="{Binding SetMapDoneCommand}" CommandParameter="done" Classes.on="{Binding MapDone, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=done}" />
+                                            </StackPanel>
+                                        </Border>
+                                        <TextBlock Classes="filterLabel" Text="SORT" Margin="0,0,8,6" />
+                                        <Border Classes="segments" Margin="0,0,20,6">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Theme="{StaticResource SegmentButton}" Content="Popular" Command="{Binding SetMapSortCommand}" CommandParameter="popular" Classes.on="{Binding MapSort, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=popular}" />
+                                                <Button Theme="{StaticResource SegmentButton}" Content="Newest" Command="{Binding SetMapSortCommand}" CommandParameter="newest" Classes.on="{Binding MapSort, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=newest}" />
+                                                <Button Theme="{StaticResource SegmentButton}" Content="Tier" Command="{Binding SetMapSortCommand}" CommandParameter="tier" Classes.on="{Binding MapSort, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=tier}" />
+                                                <Button Theme="{StaticResource SegmentButton}" Content="A-Z" Command="{Binding SetMapSortCommand}" CommandParameter="name" Classes.on="{Binding MapSort, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=name}" />
+                                                <Button Theme="{StaticResource SegmentButton}" Content="Rating" Command="{Binding SetMapSortCommand}" CommandParameter="rating" Classes.on="{Binding MapSort, Converter={x:Static ui:EqualsConverter.Instance}, ConverterParameter=rating}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </WrapPanel>
+                                </DockPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel Margin="0,0,0,8">
+                                <ItemsControl ItemsSource="{Binding MapResults}" ItemTemplate="{StaticResource MapTileTemplate}" Margin="0,0,0,16" IsVisible="{Binding IsTileView}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <ui:TilePanel MinItemWidth="{Binding TileSize}" Spacing="16" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                </ItemsControl>
+                                <Border Classes="card" Padding="10" IsVisible="{Binding IsListView}">
+                                    <ItemsControl ItemsSource="{Binding MapResults}" ItemTemplate="{StaticResource MapListTemplate}" />
+                                </Border>
+                                <Button Theme="{StaticResource GhostButton}" HorizontalAlignment="Center" Margin="0,2,0,0" Command="{Binding ShowMoreMapsCommand}"
+                                        IsVisible="{Binding HasMoreMaps}" Content="Show more maps" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </LayoutTransformControl>
+
+                <!-- ============ Binds page: KSF commands and turning on keys - run from the console, never typed in chat ============ -->
+                <Grid Name="BindsPage" Grid.Row="2" Margin="20,6,20,8" RowDefinitions="Auto,*" IsVisible="{Binding IsBindsPage}">
+                    <Border Classes="card" Padding="18,14,18,14">
+                        <StackPanel>
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Right" Classes="muted" Text="{Binding Binds.Status}" FontSize="12" Margin="16,0,0,0" />
+                                <StackPanel>
+                                    <TextBlock Text="Binds" FontFamily="{StaticResource DisplayFont}" FontSize="18" FontWeight="SemiBold" />
+                                    <TextBlock Classes="muted" TextWrapping="Wrap" TextTrimming="None" Margin="0,4,0,0" FontSize="12.5"
+                                               Text="Put KSF's commands on keys. They run from the console, so nothing is typed in chat for anyone - KSF's answer (like your saved location) only shows for you. Click a key button, then press the key; a key gets back what it did before when you take the bind off." />
+                                </StackPanel>
+                            </DockPanel>
+                            <TextBox Name="BindSearchBox" Classes="search" Margin="0,14,0,0" Text="{Binding Binds.Search, Delay=120}"
+                                     Watermark="Search binds - restart, stage, saveloc, turn, a key...">
+                                <TextBox.InnerLeftContent>
+                                    <PathIcon Data="{StaticResource IconSearch}" Width="14" Height="14" Foreground="{StaticResource Text2Brush}" Margin="13,0,2,0" />
+                                </TextBox.InnerLeftContent>
+                                <TextBox.InnerRightContent>
+                                    <Button Theme="{StaticResource IconButton}" Width="26" Height="26" Margin="0,0,5,0"
+                                            Command="{Binding Binds.ClearSearchCommand}" IsVisible="{Binding Binds.HasSearch}">
+                                        <PathIcon Data="{StaticResource IconClose}" Width="10" Height="10" />
+                                    </Button>
+                                </TextBox.InnerRightContent>
+                            </TextBox>
+                        </StackPanel>
+                    </Border>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding Binds.Groups}" Margin="0,0,0,8">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <ui:ColumnsPanel MinItemWidth="560" Spacing="16" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Classes="card bindGroup" Classes.vip="{Binding IsVip}" Margin="0" Padding="18,14,18,10" VerticalAlignment="Top">
+                                        <StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                                <Border CornerRadius="5" Background="#26E8B84A" BorderBrush="#80E8B84A" BorderThickness="1" Padding="7,1" Margin="0,0,9,0"
+                                                        VerticalAlignment="Center" IsVisible="{Binding IsVip}">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <PathIcon Data="{StaticResource IconStar}" Width="10" Height="10" Foreground="#E8B84A" VerticalAlignment="Center" />
+                                                        <TextBlock Text="VIP" FontFamily="{StaticResource DisplayFont}" FontWeight="Bold" FontSize="11" Foreground="#E8B84A" Margin="5,0,0,0" VerticalAlignment="Center" />
+                                                    </StackPanel>
+                                                </Border>
+                                                <TextBlock Classes="section" Text="{Binding Title}" IsVisible="{Binding !IsVip}" />
+                                                <TextBlock Classes="muted" Text="For KSF VIP members - the server ignores these without VIP" FontSize="11.5" IsVisible="{Binding IsVip}" />
+                                            </StackPanel>
+                                            <ItemsControl ItemsSource="{Binding Rows}" ItemTemplate="{StaticResource BindRowTemplate}" />
+                                            <!-- How fast the turn keys turn (cl_yawspeed). -->
+                                            <DockPanel Margin="0,8,0,4" IsVisible="{Binding HasTurnSpeed}" Background="Transparent"
+                                                       ToolTip.Tip="How fast the turn keys turn (cl_yawspeed; the game's default is 210)" ToolTip.ShowDelay="500">
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding $parent[Window].DataContext.Binds.TurnSpeedText}"
+                                                           FontFamily="{StaticResource DisplayFont}" FontSize="13" Width="64" TextAlignment="Right" VerticalAlignment="Center" />
+                                                <TextBlock DockPanel.Dock="Left" Classes="filterLabel" Text="TURN SPEED" Width="90" VerticalAlignment="Center" Margin="0" />
+                                                <Slider Theme="{StaticResource SizeSlider}" Minimum="50" Maximum="600" SmallChange="5" LargeChange="25" VerticalAlignment="Center" Margin="4,0,8,0"
+                                                        Value="{Binding $parent[Window].DataContext.Binds.TurnSpeed, Mode=TwoWay}" />
+                                            </DockPanel>
+                                            <!-- Any other command, e.g. sm_stage 2 or !b 1. -->
+                                            <DockPanel Margin="0,6,0,4" IsVisible="{Binding IsOwn}">
+                                                <Button DockPanel.Dock="Right" Theme="{StaticResource AccentButton}" Content="Add" Padding="16,7" Margin="10,0,0,0"
+                                                        Command="{Binding $parent[Window].DataContext.Binds.AddOwnCommand}" />
+                                                <TextBox Classes="search ownBox" Padding="12,7,12,7" FontSize="13" Watermark="Any other command, like sm_stage 2 or !b 1"
+                                                         Text="{Binding $parent[Window].DataContext.Binds.OwnCommand}" />
+                                            </DockPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- ============ Content ============ -->
+                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" IsVisible="{Binding IsDashboardPage}">
+                    <LayoutTransformControl Name="ColumnsZoom">
+                        <Grid Name="Columns" Margin="20,12,20,8" ColumnDefinitions="3*,2*" RowDefinitions="Auto,Auto">
+
+                            <!-- ===== Left: the map you're on ===== -->
+                            <StackPanel Name="LeftPanel" Grid.Column="0">
+
+                                <ContentControl Theme="{StaticResource Part}" Tag="map" IsVisible="{Binding Layout[map]}">
+                                    <Panel Name="Hero" Height="300" Margin="0,0,0,16">
+                                        <Border CornerRadius="16">
+                                            <Border.Background>
+                                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                                                    <GradientStop Color="#221610" Offset="0" />
+                                                    <GradientStop Color="#0E0E12" Offset="0.65" />
+                                                </LinearGradientBrush>
+                                            </Border.Background>
+                                        </Border>
+                                        <Border Name="HeroImage" CornerRadius="16" Background="{Binding MapImage, Converter={x:Static ui:ImageBrushConverter.Instance}}" />
+                                        <Border CornerRadius="16">
+                                            <Border.Background>
+                                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                                                    <GradientStop Color="#5507070A" Offset="0" />
+                                                    <GradientStop Color="#0007070A" Offset="0.32" />
+                                                    <GradientStop Color="#B007070A" Offset="0.72" />
+                                                    <GradientStop Color="#F207070A" Offset="1" />
+                                                </LinearGradientBrush>
+                                            </Border.Background>
+                                        </Border>
+                                        <Border CornerRadius="16" BorderBrush="#1FFFFFFF" BorderThickness="1" />
+
+                                        <Panel Name="HeroContent" Margin="26,22,26,24">
+                                            <Panel.RenderTransform>
+                                                <TranslateTransform />
+                                            </Panel.RenderTransform>
+
+                                            <DockPanel VerticalAlignment="Top" LastChildFill="False">
+                                                <Border DockPanel.Dock="Left" Classes="badge">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Ellipse Classes="pulse" Width="7" Height="7" Fill="{StaticResource AccentBrush}" Margin="0,0,7,0" VerticalAlignment="Center" />
+                                                        <TextBlock Text="{Binding MapBadge}" FontFamily="{StaticResource DisplayFont}" FontSize="11.5" FontWeight="SemiBold" />
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border DockPanel.Dock="Left" Margin="8,0,0,0" CornerRadius="7" Background="#A6000000" Padding="2" IsVisible="{Binding HasMap}">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Button Theme="{StaticResource SegmentButton}" Content="66T" Command="{Binding TickCommand}" CommandParameter="css" Classes.on="{Binding !Is100t}" />
+                                                        <Button Theme="{StaticResource SegmentButton}" Content="100T" Command="{Binding TickCommand}" CommandParameter="css100t" Classes.on="{Binding Is100t}" />
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border DockPanel.Dock="Left" Margin="8,0,0,0" Classes="badge" IsVisible="{Binding HasServerLine}">
+                                                    <TextBlock Text="{Binding ServerLine}" FontSize="12" Foreground="{StaticResource Text1Brush}" />
+                                                </Border>
+                                                <Border DockPanel.Dock="Left" Margin="8,0,0,0" Classes="badge" IsVisible="{Binding Loading}">
+                                                    <TextBlock Text="asking ksf.surf..." FontSize="12" Foreground="{StaticResource Text1Brush}" />
+                                                </Border>
+                                                <Border DockPanel.Dock="Right" Classes="badge" IsVisible="{Binding HasRating}">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <PathIcon Data="{StaticResource IconStarFilled}" Foreground="#F5C542" Width="12" Height="12" VerticalAlignment="Center" />
+                                                        <TextBlock Text="{Binding RatingText}" Margin="6,0,0,0" FontFamily="{StaticResource DisplayFont}" FontSize="12" />
+                                                    </StackPanel>
+                                                </Border>
+                                                <!-- KSF announces the next map in chat near the end (or when a vote finishes). -->
+                                                <Border DockPanel.Dock="Right" Margin="0,0,8,0" Classes="badge" IsVisible="{Binding HasNextMap}">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="NEXT" FontFamily="{StaticResource DisplayFont}" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"
+                                                                   VerticalAlignment="Center" />
+                                                        <TextBlock Text="{Binding NextMap}" Margin="7,0,0,0" FontFamily="{StaticResource DisplayFont}" FontSize="12" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </DockPanel>
+
+                                            <Grid VerticalAlignment="Bottom" ColumnDefinitions="*,Auto">
+                                                <StackPanel VerticalAlignment="Bottom">
+                                                    <TextBlock Name="MapTitle" Text="{Binding MapName}" FontFamily="{StaticResource DisplayFont}" FontWeight="SemiBold" FontSize="46"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0" IsVisible="{Binding IsOnKsf}">
+                                                        <Border Classes="chip" Background="{Binding TierSoftBrush}">
+                                                            <TextBlock Classes="chipText" Text="{Binding TierText}" Foreground="{Binding TierBrush}" />
+                                                        </Border>
+                                                        <Border Classes="chip" Background="#C0141418">
+                                                            <TextBlock Classes="chipText" Text="{Binding TypeText}" />
+                                                        </Border>
+                                                        <Border Classes="chip" Background="#C0141418">
+                                                            <TextBlock Classes="chipText" Text="{Binding BonusText}" />
+                                                        </Border>
+                                                        <TextBlock Text="{Binding MapperText}" Foreground="{StaticResource Text1Brush}" FontSize="12.5" VerticalAlignment="Center" Margin="6,0,0,0" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="{Binding EmptyText}" Foreground="{StaticResource Text1Brush}" FontSize="13" Margin="0,8,0,0" TextWrapping="Wrap"
+                                                               IsVisible="{Binding !IsOnKsf}" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Bottom" Margin="16,0,0,0">
+                                                    <!-- The time left on the map, big, across from the map's name: the limit and how much it's been extended under it. -->
+                                                    <ContentControl Theme="{StaticResource Part}" Tag="timer" HorizontalAlignment="Right" Margin="0,0,0,14" IsVisible="{Binding Layout[timer]}">
+                                                        <!-- A small frosted panel: status dot and label, thin digits, a hairline of the map's time, the limit and extends. -->
+                                                        <Border Name="HeroClock" Width="214" CornerRadius="14" Background="#8C0A0A0E" BorderBrush="#1FFFFFFF" BorderThickness="1"
+                                                                Padding="18,12,18,13" IsVisible="{Binding HasHeroTime}">
+                                                            <StackPanel>
+                                                                <StackPanel Orientation="Horizontal">
+                                                                    <Ellipse Width="6" Height="6" Fill="{Binding HeroAccentBrush}" VerticalAlignment="Center" />
+                                                                    <TextBlock Text="{Binding HeroTimeLabel}" FontFamily="{StaticResource DisplayFont}" FontSize="10.5" FontWeight="SemiBold"
+                                                                               Foreground="{StaticResource Text2Brush}" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                                                </StackPanel>
+                                                                <TextBlock Name="HeroClockText" Text="{Binding HeroTimeBig}" FontFamily="{StaticResource DisplayFont}" FontSize="50" FontWeight="Light"
+                                                                           Foreground="{Binding HeroTimeBrush}" FontFeatures="+tnum" Margin="-2,0,0,0" />
+                                                                <Panel Height="2" Margin="0,4,0,0">
+                                                                    <Border CornerRadius="1" Background="#1AFFFFFF" />
+                                                                    <ui:FillBar Radius="1" Fill="{Binding HeroAccentBrush}" Value="{Binding HeroTimeFraction}" />
+                                                                </Panel>
+                                                                <TextBlock Text="{Binding ExtendInfo}" FontSize="11.5" Foreground="{StaticResource Text2Brush}" Margin="0,9,0,0"
+                                                                           TextWrapping="Wrap" IsVisible="{Binding HasExtendInfo}" />
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </ContentControl>
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" IsVisible="{Binding HasMap}">
+                                                        <Button Theme="{StaticResource GhostButton}" Background="#A6000000" Command="{Binding OpenMapCommand}" Margin="0,0,8,0">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <PathIcon Classes="glyph" Data="{StaticResource IconOpen}" />
+                                                                <TextBlock Text="ksf.surf" Margin="8,0,0,0" />
+                                                            </StackPanel>
+                                                        </Button>
+                                                        <Button Theme="{StaticResource AccentButton}" Command="{Binding SaveCommand}" IsEnabled="{Binding !IsSaved}">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <PathIcon Classes="glyph" Data="{StaticResource IconStarFilled}" />
+                                                                <TextBlock Text="{Binding SaveLabel}" Margin="8,0,0,0" />
+                                                            </StackPanel>
+                                                        </Button>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Panel>
+
+                                        <!-- PB / first finish / WR: plays for a few seconds right when the timer says you finished -->
+                                        <Panel Name="Celebration" Opacity="0" IsHitTestVisible="False" IsVisible="False">
+                                            <Border CornerRadius="16" Background="#B307070A" />
+                                            <Border CornerRadius="16">
+                                                <Border.Background>
+                                                    <RadialGradientBrush Center="50%,62%" GradientOrigin="50%,62%" RadiusX="70%" RadiusY="95%">
+                                                        <GradientStop Color="#99FF7A1A" Offset="0" />
+                                                        <GradientStop Color="#33FF7A1A" Offset="0.5" />
+                                                        <GradientStop Color="#00FF7A1A" Offset="1" />
+                                                    </RadialGradientBrush>
+                                                </Border.Background>
+                                            </Border>
+                                            <Border CornerRadius="16" BorderBrush="#99FF7A1A" BorderThickness="1.5" />
+                                            <StackPanel Name="CelebrationContent" HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="50%,50%">
+                                                <StackPanel.RenderTransform>
+                                                    <ScaleTransform />
+                                                </StackPanel.RenderTransform>
+                                                <PathIcon Data="{StaticResource IconStarFilled}" Width="24" Height="24" Foreground="#FFD27A" HorizontalAlignment="Center" />
+                                                <TextBlock Text="{Binding CelebrationTitle}" FontFamily="{StaticResource DisplayFont}" FontWeight="Bold" FontSize="40"
+                                                           HorizontalAlignment="Center" Margin="0,8,0,0">
+                                                    <TextBlock.Effect>
+                                                        <DropShadowEffect BlurRadius="26" OffsetX="0" OffsetY="0" Color="#FF7A1A" Opacity="0.85" />
+                                                    </TextBlock.Effect>
+                                                </TextBlock>
+                                                <TextBlock Text="{Binding CelebrationDetail}" FontFamily="{StaticResource DisplayFont}" FontSize="22" Foreground="{StaticResource Text0Brush}"
+                                                           FontFeatures="+tnum" HorizontalAlignment="Center" Margin="0,4,0,0" />
+                                            </StackPanel>
+                                        </Panel>
+                                    </Panel>
+                                </ContentControl>
+
+                                <!-- stat tiles -->
+                                <ContentControl Theme="{StaticResource Part}" Tag="numbers" IsVisible="{Binding Layout[numbers]}">
+                                    <UniformGrid Name="Tiles" Columns="4" Margin="0,0,-12,4" IsVisible="{Binding IsOnKsf}">
+                                        <Border Classes="tile">
+                                            <StackPanel>
+                                                <TextBlock Classes="section" Text="WORLD RECORD" />
+                                                <TextBlock Classes="numbers" Text="{Binding WrTime}" FontSize="30" FontWeight="SemiBold" Foreground="#F5C542" Margin="0,10,0,0" />
+                                                <TextBlock Text="{Binding WrHolder}" FontSize="13" TextTrimming="CharacterEllipsis" Margin="0,4,0,0" />
+                                                <TextBlock Classes="muted" Text="{Binding WrDate}" Margin="0,2,0,0" IsVisible="{Binding Layout.IsAdvanced}" />
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Classes="tile">
+                                            <StackPanel>
+                                                <TextBlock Classes="section" Text="YOUR BEST" />
+                                                <TextBlock Classes="numbers" Text="{Binding PbTime}" FontSize="30" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" Margin="0,10,0,0" />
+                                                <TextBlock Text="{Binding PbRank}" FontSize="13" TextTrimming="CharacterEllipsis" Margin="0,4,0,0" />
+                                                <StackPanel IsVisible="{Binding Layout.IsAdvanced}">
+                                                    <Panel Height="4" Margin="0,9,0,0" IsVisible="{Binding HasPb}">
+                                                        <Border CornerRadius="2" Background="{StaticResource Bg3Brush}" />
+                                                        <ui:FillBar Radius="2" Fill="{StaticResource AccentBrush}" Value="{Binding PbBar}" />
+                                                    </Panel>
+                                                    <TextBlock Classes="muted" Text="{Binding PbTop}" Margin="0,5,0,0" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Classes="tile">
+                                            <StackPanel>
+                                                <TextBlock Classes="section" Text="GAP TO WR" />
+                                                <TextBlock Classes="numbers" Text="{Binding GapTime}" FontSize="30" FontWeight="SemiBold" Margin="0,10,0,0" />
+                                                <TextBlock Classes="muted" Text="{Binding GapDetail}" Margin="0,4,0,0" FontSize="12.5" IsVisible="{Binding Layout.IsAdvanced}" />
+                                                <Border Classes="chip" Background="{StaticResource GoodSoftBrush}" HorizontalAlignment="Left" Margin="0,9,0,0" IsVisible="{Binding HasGroup}">
+                                                    <TextBlock Classes="chipText" Text="{Binding GroupText}" Foreground="{StaticResource GoodBrush}" />
+                                                </Border>
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Classes="tile" ToolTip.ShowDelay="700"
+                                                ToolTip.Tip="Finishes count the moment you finish. Attempts and time on the map are KSF's own counts - ksf.surf updates them a few minutes later, so they can tick up while you stand still.">
+                                            <StackPanel>
+                                                <TextBlock Classes="section" Text="FINISHES" />
+                                                <TextBlock Classes="numbers" Text="{Binding Finishes}" FontSize="30" FontWeight="SemiBold" Margin="0,10,0,0" />
+                                                <TextBlock Text="{Binding Attempts}" FontSize="13" Margin="0,4,0,0" />
+                                                <TextBlock Classes="muted" Text="{Binding Playtime}" Margin="0,2,0,0" IsVisible="{Binding Layout.IsAdvanced}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </UniformGrid>
+                                </ContentControl>
+
+                                <!-- your times: the map, every stage and every bonus - time, gap to the record, your place on each leaderboard -->
+                                <ContentControl Theme="{StaticResource Part}" Tag="times" IsVisible="{Binding Layout[times]}">
+                                    <Border Classes="card" IsVisible="{Binding HasTimes}">
+                                        <StackPanel>
+                                            <DockPanel Margin="0,0,0,8">
+                                                <TextBlock Classes="muted" DockPanel.Dock="Right" Text="bar: how close you are to the record (full = record pace)" FontSize="11.5"
+                                                           IsVisible="{Binding Layout.IsAdvanced}" />
+                                                <TextBlock Classes="section" Text="YOUR TIMES" />
+                                            </DockPanel>
+                                            <ContentControl Content="{Binding MapRow}" ContentTemplate="{StaticResource ZoneRowTemplate}" />
+
+                                            <StackPanel Margin="0,14,0,0" IsVisible="{Binding HasStages}">
+                                                <DockPanel Margin="0,0,0,6">
+                                                    <TextBlock Classes="muted" DockPanel.Dock="Right" Text="{Binding StagesSummary}" FontSize="11.5" IsVisible="{Binding Layout.IsAdvanced}" />
+                                                    <TextBlock Classes="section" Text="STAGES" FontSize="11" />
+                                                </DockPanel>
+                                                <Grid Name="StagesGrid" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
+                                                    <ItemsControl ItemsSource="{Binding StagesA}" ItemTemplate="{StaticResource ZoneRowTemplate}" />
+                                                    <ItemsControl Name="StagesRight" Grid.Column="1" Margin="28,0,0,0" ItemsSource="{Binding StagesB}" ItemTemplate="{StaticResource ZoneRowTemplate}" />
+                                                </Grid>
+                                            </StackPanel>
+
+                                            <StackPanel Margin="0,14,0,0" IsVisible="{Binding HasBonuses}">
+                                                <DockPanel Margin="0,0,0,6">
+                                                    <TextBlock Classes="muted" DockPanel.Dock="Right" Text="{Binding BonusesSummary}" FontSize="11.5" IsVisible="{Binding Layout.IsAdvanced}" />
+                                                    <TextBlock Classes="section" Text="BONUSES" FontSize="11" />
+                                                </DockPanel>
+                                                <Grid Name="BonusesGrid" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
+                                                    <ItemsControl ItemsSource="{Binding BonusesA}" ItemTemplate="{StaticResource ZoneRowTemplate}" />
+                                                    <ItemsControl Name="BonusesRight" Grid.Column="1" Margin="28,0,0,0" ItemsSource="{Binding BonusesB}" ItemTemplate="{StaticResource ZoneRowTemplate}" />
+                                                </Grid>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </ContentControl>
+
+                                <!-- leaderboard -->
+                                <ContentControl Theme="{StaticResource Part}" Tag="leaderboard" IsVisible="{Binding Layout[leaderboard]}">
+                                    <Border Classes="card" IsVisible="{Binding IsOnKsf}">
+                                        <StackPanel>
+                                            <DockPanel Margin="0,0,0,8">
+                                                <TextBlock Classes="muted" DockPanel.Dock="Right" Text="{Binding FinishersText}" />
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Classes="section" Text="LEADERBOARD" />
+                                                    <TextBlock Classes="section" Text="{Binding LeaderHeading}" Foreground="{StaticResource AccentBrush}" Margin="8,0,0,0" />
+                                                    <!-- It follows where you are (the map, or the bonus you're on) unless you picked another one. -->
+                                                    <Button Theme="{StaticResource GhostButton}" Padding="8,2" Margin="12,0,0,0" FontSize="11"
+                                                            Command="{Binding FollowLeaderboardCommand}" IsVisible="{Binding LeaderPinned}"
+                                                            ToolTip.Tip="Show the leaderboard of where you are again" ToolTip.ShowDelay="700">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <PathIcon Classes="glyph" Data="{StaticResource IconLocation}" Width="11" Height="11" />
+                                                            <TextBlock Text="follow me" Margin="6,0,0,0" />
+                                                        </StackPanel>
+                                                    </Button>
+                                                </StackPanel>
+                                            </DockPanel>
+                                            <ItemsControl ItemsSource="{Binding LeaderChips}" Margin="0,0,0,8" IsVisible="{Binding HasLeaderChoices}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Button Command="{Binding $parent[Window].DataContext.SelectLeaderboardCommand}" CommandParameter="{Binding Zone}" Classes.on="{Binding IsSelected}">
+                                                            <Button.Theme>
+                                                                <ControlTheme TargetType="Button">
+                                                                    <Setter Property="Focusable" Value="False" />
+                                                                    <Setter Property="Template">
+                                                                        <ControlTemplate>
+                                                                            <Panel Margin="0,0,5,5" Background="Transparent">
+                                                                                <Border Name="bg" CornerRadius="5" Background="{StaticResource Bg3Brush}" />
+                                                                                <Border Name="hover" Classes="fade" CornerRadius="5" Background="#16FFFFFF" Opacity="0" />
+                                                                                <TextBlock Name="text" Text="{Binding Label}" Margin="9,2" FontFamily="{StaticResource DisplayFont}" FontSize="11" FontWeight="SemiBold"
+                                                                                           Foreground="{StaticResource Text1Brush}" />
+                                                                            </Panel>
+                                                                        </ControlTemplate>
+                                                                    </Setter>
+                                                                    <Style Selector="^.on /template/ Border#bg">
+                                                                        <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+                                                                    </Style>
+                                                                    <Style Selector="^.on /template/ TextBlock#text">
+                                                                        <Setter Property="Foreground" Value="#1A0E05" />
+                                                                    </Style>
+                                                                    <Style Selector="^:pointerover /template/ Border#hover">
+                                                                        <Setter Property="Opacity" Value="1" />
+                                                                    </Style>
+                                                                </ControlTheme>
+                                                            </Button.Theme>
+                                                        </Button>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock Classes="muted" Text="Loading..." IsVisible="{Binding Loading}" />
+                                            <TextBlock Classes="muted" Text="Loading..." IsVisible="{Binding LeaderLoading}" />
+                                            <ItemsControl ItemsSource="{Binding Leaders}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Panel>
+                                                            <TextBlock Text="···" Foreground="{StaticResource Text2Brush}" HorizontalAlignment="Center" FontSize="14" Margin="0,0,0,2"
+                                                                       IsVisible="{Binding IsGap}" />
+                                                            <Border Classes="row leader" Classes.you="{Binding IsYou}" Padding="10,7" IsVisible="{Binding !IsGap}">
+                                                                <Grid ColumnDefinitions="56,*,Auto,90">
+                                                                    <TextBlock Classes="numbers" Text="{Binding Rank}" Foreground="{Binding RankBrush}" FontWeight="SemiBold" FontSize="14" />
+                                                                    <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" FontSize="13.5" />
+                                                                    <TextBlock Grid.Column="2" Classes="numbers" Text="{Binding Time}" FontSize="14.5" />
+                                                                    <TextBlock Grid.Column="3" Classes="numbers" Text="{Binding Gap}" Foreground="{StaticResource Text2Brush}"
+                                                                               FontSize="12.5" HorizontalAlignment="Right" IsVisible="{Binding $parent[Window].DataContext.Layout.IsAdvanced}" />
+                                                                </Grid>
+                                                            </Border>
+                                                        </Panel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </ContentControl>
+
+                                <!-- in-game keys (help, so not in the Simple view) -->
+                                <ContentControl Theme="{StaticResource Part}" Tag="keys" IsVisible="{Binding Layout[keys]}">
+                                    <StackPanel Orientation="Horizontal" Margin="4,2,0,16" Opacity="0.85" IsVisible="{Binding Layout.IsAdvanced}">
+                                        <TextBlock Classes="muted" Text="In game" Margin="0,0,12,0" />
+                                        <Border Classes="keyCap"><TextBlock Name="SaveKey" Text="F5" FontFamily="{StaticResource DisplayFont}" FontSize="11" /></Border>
+                                        <TextBlock Classes="muted" Text="save map" Margin="0,0,16,0" />
+                                        <Border Classes="keyCap"><TextBlock Name="CardKey" Text="F6" FontFamily="{StaticResource DisplayFont}" FontSize="11" /></Border>
+                                        <TextBlock Classes="muted" Text="hold for the map card" Margin="0,0,16,0" />
+                                        <Border Classes="keyCap"><TextBlock Name="ListKey" Text="F7" FontFamily="{StaticResource DisplayFont}" FontSize="11" /></Border>
+                                        <TextBlock Classes="muted" Text="hold for your list" />
+                                    </StackPanel>
+                                </ContentControl>
+                            </StackPanel>
+
+                            <!-- ===== Right: your server live, this session, play later, servers, recent ===== -->
+                            <StackPanel Name="RightPanel" Grid.Column="1" Margin="16,0,0,0">
+
+                                <!-- The KSF server you're on, from ksf.surf every 15 s: who's there and which stage they're on. -->
+                                <ContentControl Theme="{StaticResource Part}" Tag="live" IsVisible="{Binding Layout[live]}">
+                                    <Border Classes="card" BorderBrush="#40FF7A1A" IsVisible="{Binding HasLiveServer}">
+                                        <StackPanel>
+                                            <DockPanel>
+                                                <TextBlock DockPanel.Dock="Right" Classes="numbers" Text="{Binding LiveTimeLeft}" FontSize="13"
+                                                           Foreground="{StaticResource Text1Brush}" IsVisible="{Binding HasLiveTime}" />
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Border CornerRadius="5" Background="{StaticResource AccentSoftBrush}" Padding="7,2" VerticalAlignment="Center">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Ellipse Classes="pulse" Width="6" Height="6" Fill="{StaticResource AccentBrush}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                                            <TextBlock Text="LIVE" FontFamily="{StaticResource DisplayFont}" FontSize="10.5" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <TextBlock Text="{Binding LiveTitle}" FontFamily="{StaticResource DisplayFont}" FontWeight="SemiBold" FontSize="14"
+                                                               Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                            </DockPanel>
+                                            <TextBlock Classes="muted" Text="{Binding LiveSubtitle}" FontSize="12.5" Margin="0,7,0,0" />
+                                            <Panel Height="3" Margin="0,11,0,8" IsVisible="{Binding HasLiveTime}">
+                                                <Border CornerRadius="1.5" Background="{StaticResource Bg3Brush}" />
+                                                <ui:FillBar Radius="1.5" Fill="{StaticResource AccentBrush}" Value="{Binding LiveTimeFraction}" />
+                                            </Panel>
+                                            <ItemsControl ItemsSource="{Binding LivePlayers}" Margin="0,4,0,0">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <ui:LimitPanel MaxItems="{Binding LiveLimit}" />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Classes="row livePlayer" Classes.you="{Binding IsYou}" Classes.nozone="{Binding !HasZone}" Padding="8,5" Margin="-8,0">
+                                                            <Grid ColumnDefinitions="82,*,Auto,64">
+                                                                <Border Name="zone" CornerRadius="5" Padding="6,1" Background="{Binding ZoneSoftBrush}" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                                    <TextBlock Text="{Binding Zone}" Foreground="{Binding ZoneBrush}" FontSize="10.5" FontWeight="SemiBold" FontFamily="{StaticResource DisplayFont}" />
+                                                                </Border>
+                                                                <TextBlock Name="name" Grid.Column="1" Text="{Binding Name}" FontSize="13" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                                <TextBlock Grid.Column="2" Classes="numbers" Text="{Binding Rank}" Foreground="{StaticResource Text2Brush}" FontSize="12" Margin="10,0,0,0" />
+                                                                <TextBlock Grid.Column="3" Classes="numbers" Text="{Binding Connected}" Foreground="{StaticResource Text2Brush}" FontSize="12"
+                                                                           HorizontalAlignment="Right" ToolTip.Tip="Time on the server" />
+                                                            </Grid>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock Classes="muted" Text="{Binding LiveSpectators}" FontSize="11.5" Margin="0,6,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                </ContentControl>
+
+                                <!-- This run of the game: how long, how many maps, finishes and PBs. -->
+                                <ContentControl Theme="{StaticResource Part}" Tag="session" IsVisible="{Binding Layout[session]}">
+                                    <Border Classes="card" Padding="18,14" IsVisible="{Binding HasSession}">
+                                        <StackPanel>
+                                            <TextBlock Classes="section" Text="{Binding SessionTitle}" />
+                                            <UniformGrid Columns="4" Margin="0,10,0,0">
+                                                <StackPanel>
+                                                    <TextBlock Classes="numbers" Text="{Binding SessionTime}" FontSize="21" FontWeight="SemiBold" HorizontalAlignment="Left" />
+                                                    <TextBlock Classes="muted" Text="played" FontSize="11.5" Margin="0,2,0,0" />
+                                                </StackPanel>
+                                                <StackPanel>
+                                                    <TextBlock Classes="numbers" Text="{Binding SessionMaps}" FontSize="21" FontWeight="SemiBold" HorizontalAlignment="Left" />
+                                                    <TextBlock Classes="muted" Text="{Binding SessionMapsLabel}" FontSize="11.5" Margin="0,2,0,0" />
+                                                </StackPanel>
+                                                <StackPanel>
+                                                    <TextBlock Classes="numbers" Text="{Binding SessionFinishes}" FontSize="21" FontWeight="SemiBold" HorizontalAlignment="Left" />
+                                                    <TextBlock Classes="muted" Text="{Binding SessionFinishesLabel}" FontSize="11.5" Margin="0,2,0,0" />
+                                                </StackPanel>
+                                                <StackPanel>
+                                                    <TextBlock Classes="numbers" Text="{Binding SessionPbs}" FontSize="21" FontWeight="SemiBold" HorizontalAlignment="Left"
+                                                               Foreground="{StaticResource AccentBrush}" />
+                                                    <TextBlock Classes="muted" Text="{Binding SessionPbsLabel}" FontSize="11.5" Margin="0,2,0,0" />
+                                                </StackPanel>
+                                            </UniformGrid>
+                                        </StackPanel>
+                                    </Border>
+                                </ContentControl>
+
+                                <!-- Your KSF title (the tag in front of your name in chat) on 66 and 100 tick, and how far off the next one is. -->
+                                <ContentControl Theme="{StaticResource Part}" Tag="level" IsVisible="{Binding Layout[level]}">
+                                    <Border Classes="card" Padding="18,14" IsVisible="{Binding HasLevels}">
+                                        <StackPanel>
+                                            <TextBlock Classes="section" Text="YOUR LEVEL" />
+                                            <ItemsControl ItemsSource="{Binding Levels}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Classes="level" Classes.current="{Binding IsCurrent}" Margin="0,12,0,0">
+                                                            <DockPanel>
+                                                                <TextBlock DockPanel.Dock="Right" Classes="numbers" Text="{Binding Standing}" FontSize="13" VerticalAlignment="Center" />
+                                                                <Border DockPanel.Dock="Left" Name="tick" CornerRadius="5" Padding="6,1" VerticalAlignment="Center">
+                                                                    <TextBlock Name="tickText" Text="{Binding Tick}" FontFamily="{StaticResource DisplayFont}" FontSize="11" FontWeight="Bold" />
+                                                                </Border>
+                                                                <TextBlock Text="{Binding Title}" FontFamily="{StaticResource DisplayFont}" FontSize="19" FontWeight="SemiBold" Margin="10,0,0,0"
+                                                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                                            </DockPanel>
+                                                            <Panel Height="6" Margin="0,9,0,0">
+                                                                <Border CornerRadius="3" Background="{StaticResource Bg3Brush}" />
+                                                                <ui:FillBar Name="bar" Radius="3" Animate="True" Value="{Binding Progress}" />
+                                                            </Panel>
+                                                            <DockPanel Margin="0,7,0,0">
+                                                                <TextBlock DockPanel.Dock="Right" Classes="muted" Text="{Binding Extra}" FontSize="11.5" Margin="12,0,0,0" VerticalAlignment="Center"
+                                                                           IsVisible="{Binding $parent[Window].DataContext.Layout.IsAdvanced}" />
+                                                                <TextBlock Text="{Binding Next}" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                                            </DockPanel>
+                                                            <TextBlock Classes="muted" Text="{Binding NextDetail}" FontSize="11.5" Margin="0,2,0,0"
+                                                                       IsVisible="{Binding $parent[Window].DataContext.Layout.IsAdvanced}" />
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </ContentControl>
+
+                                <ContentControl Theme="{StaticResource Part}" Tag="later" IsVisible="{Binding Layout[later]}">
+                                    <Border Classes="card">
+                                        <StackPanel>
+                                            <DockPanel Margin="0,0,0,10">
+                                                <Button DockPanel.Dock="Right" Theme="{StaticResource IconButton}" ToolTip.Tip="Open the folder with play-later.txt and settings.ini"
+                                                        Command="{Binding OpenFolderCommand}" Width="26" Height="26">
+                                                    <PathIcon Data="{StaticResource IconFolder}" />
+                                                </Button>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Classes="section" Text="PLAY LATER" />
+                                                    <Border Margin="8,0,0,0" CornerRadius="5" Background="{StaticResource Bg3Brush}" Padding="6,1" VerticalAlignment="Center" IsVisible="{Binding HasLater}">
+                                                        <TextBlock Text="{Binding LaterCount}" FontFamily="{StaticResource DisplayFont}" FontSize="11" Foreground="{StaticResource Text1Brush}" />
+                                                    </Border>
+                                                </StackPanel>
+                                            </DockPanel>
+                                            <TextBlock Classes="muted" TextWrapping="Wrap" TextTrimming="None" FontSize="12.5" Margin="0,0,0,4"
+                                                       Text="Nothing saved yet. Press F5 while you're on a map you want to come back to, or use Save for later above."
+                                                       IsVisible="{Binding !HasLater}" />
+                                            <ItemsControl ItemsSource="{Binding Later}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Classes="row laterRow" Classes.current="{Binding IsCurrent}" Margin="0,0,0,4">
+                                                            <Panel>
+                                                                <Border Name="hover" Classes="fade" CornerRadius="9" Background="#0CFFFFFF" />
+                                                                <Grid Margin="7" ColumnDefinitions="Auto,*,Auto">
+                                                                    <Panel Width="96" Height="54">
+                                                                        <Border CornerRadius="7" Background="{StaticResource Bg3Brush}" />
+                                                                        <Border CornerRadius="7" Background="{Binding Thumb, Converter={x:Static ui:ImageBrushConverter.Instance}}" />
+                                                                    </Panel>
+                                                                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                                                        <TextBlock Text="{Binding Map}" FontFamily="{StaticResource DisplayFont}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                                            <Border CornerRadius="5" Padding="6,1" Background="{Binding TierSoftBrush}">
+                                                                                <TextBlock Text="{Binding Tier}" Foreground="{Binding TierBrush}" FontSize="11" FontWeight="SemiBold" FontFamily="{StaticResource DisplayFont}" />
+                                                                            </Border>
+                                                                            <TextBlock Classes="muted" Text="{Binding Saved}" Margin="8,0,0,0" FontSize="11.5" />
+                                                                            <TextBlock Text="playing now" Foreground="{StaticResource AccentBrush}" FontSize="11.5" Margin="8,0,0,0"
+                                                                                       VerticalAlignment="Center" IsVisible="{Binding IsCurrent}" />
+                                                                        </StackPanel>
+                                                                        <StackPanel Orientation="Horizontal" Margin="0,5,0,0" IsVisible="{Binding IsLive}">
+                                                                            <Ellipse Width="6" Height="6" Fill="{StaticResource GoodBrush}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                                                            <TextBlock Text="{Binding Live}" Foreground="{StaticResource GoodBrush}" FontSize="11.5" TextTrimming="CharacterEllipsis" />
+                                                                        </StackPanel>
+                                                                    </StackPanel>
+                                                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                                                        <StackPanel Name="actions" Classes="fade" Orientation="Horizontal">
+                                                                            <Button Theme="{StaticResource IconButton}" ToolTip.Tip="Nominate - sent straight to the KSF server you're on, otherwise copied for chat"
+                                                                                    Command="{Binding $parent[Window].DataContext.NominateCommand}" CommandParameter="{Binding Map}">
+                                                                                <PathIcon Data="{StaticResource IconSend}" />
+                                                                            </Button>
+                                                                            <Button Theme="{StaticResource IconButton}" ToolTip.Tip="Open on ksf.surf"
+                                                                                    Command="{Binding $parent[Window].DataContext.OpenLaterCommand}" CommandParameter="{Binding Map}">
+                                                                                <PathIcon Data="{StaticResource IconOpen}" />
+                                                                            </Button>
+                                                                            <Button Theme="{StaticResource IconButton}" ToolTip.Tip="Remove from the list"
+                                                                                    Command="{Binding $parent[Window].DataContext.RemoveLaterCommand}" CommandParameter="{Binding Map}">
+                                                                                <PathIcon Data="{StaticResource IconDelete}" />
+                                                                            </Button>
+                                                                        </StackPanel>
+                                                                        <Button Theme="{StaticResource AccentButton}" Padding="12,5" Margin="4,0,0,0" IsVisible="{Binding IsLive}"
+                                                                                Command="{Binding $parent[Window].DataContext.JoinCommand}" CommandParameter="{Binding JoinAddress}">
+                                                                            <TextBlock Text="Join" />
+                                                                        </Button>
+                                                                    </StackPanel>
+                                                                </Grid>
+                                                            </Panel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </ContentControl>
+
+                                <ContentControl Theme="{StaticResource Part}" Tag="servers" IsVisible="{Binding Layout[servers]}">
+                                    <Border Classes="card">
+                                        <StackPanel>
+                                            <DockPanel Margin="0,0,0,8">
+                                                <TextBlock Classes="muted" DockPanel.Dock="Right" Text="{Binding ServersUpdated}" />
+                                                <TextBlock Classes="section" Text="KSF SERVERS" />
+                                            </DockPanel>
+                                            <TextBlock Classes="muted" Text="Loading servers..." IsVisible="{Binding !HasServers}" />
+                                            <ItemsControl ItemsSource="{Binding Servers}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <ui:LimitPanel MaxItems="{Binding ServerLimit}" />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Classes="row serverRow" Classes.yours="{Binding IsYours}">
+                                                            <Panel>
+                                                                <Border Name="hover" Classes="fade" CornerRadius="9" Background="#0CFFFFFF" />
+                                                                <Grid Margin="10,7" ColumnDefinitions="146,*,Auto,70,Auto">
+                                                                    <StackPanel VerticalAlignment="Center">
+                                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12.5" Foreground="{StaticResource Text1Brush}" TextTrimming="CharacterEllipsis" />
+                                                                        <TextBlock Text="YOU'RE HERE" Foreground="{StaticResource AccentBrush}" FontFamily="{StaticResource DisplayFont}"
+                                                                                   FontSize="10" FontWeight="SemiBold" IsVisible="{Binding IsYours}" />
+                                                                    </StackPanel>
+                                                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                                                        <Border CornerRadius="5" Padding="6,1" Background="{Binding TierSoftBrush}" VerticalAlignment="Center">
+                                                                            <TextBlock Text="{Binding Tier}" Foreground="{Binding TierBrush}" FontSize="11" FontWeight="SemiBold" FontFamily="{StaticResource DisplayFont}" />
+                                                                        </Border>
+                                                                        <TextBlock Text="{Binding Map}" Margin="8,0,0,0" FontSize="13" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                                        <PathIcon Data="{StaticResource IconStarFilled}" Foreground="#F5C542" Width="11" Height="11"
+                                                                                  Margin="7,0,0,0" VerticalAlignment="Center" IsVisible="{Binding IsSaved}" />
+                                                                    </StackPanel>
+                                                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Center">
+                                                                        <PathIcon Data="{StaticResource IconPeople}" Foreground="{StaticResource Text2Brush}" Width="13" Height="13" VerticalAlignment="Center" />
+                                                                        <TextBlock Classes="numbers" Text="{Binding Players}" Margin="6,0,0,0" FontSize="13" />
+                                                                    </StackPanel>
+                                                                    <TextBlock Grid.Column="3" Classes="muted" Text="{Binding TimeLeft}" TextAlignment="Right" HorizontalAlignment="Right" />
+                                                                    <Button Name="join" Grid.Column="4" Classes="fade" Theme="{StaticResource GhostButton}" Padding="10,4" Margin="10,0,0,0"
+                                                                            Command="{Binding $parent[Window].DataContext.JoinCommand}" CommandParameter="{Binding Address}">
+                                                                        <TextBlock Text="Join" />
+                                                                    </Button>
+                                                                </Grid>
+                                                            </Panel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </ContentControl>
+
+                                <ContentControl Theme="{StaticResource Part}" Tag="recent" IsVisible="{Binding Layout[recent]}">
+                                    <Border Classes="card">
+                                        <StackPanel>
+                                            <TextBlock Classes="section" Text="YOUR RECENT RECORDS" Margin="0,0,0,12" />
+                                            <TextBlock Classes="muted" Text="Nothing yet - your new PRs and groups on KSF show up here." IsVisible="{Binding !HasRecent}" />
+                                            <ItemsControl ItemsSource="{Binding Recent}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <ui:LimitPanel MaxItems="{Binding RecentLimit}" />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid Margin="0,0,0,12" ColumnDefinitions="94,*,Auto">
+                                                            <Border CornerRadius="5" Padding="7,2" Background="{Binding KindSoftBrush}" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="0,2,0,0">
+                                                                <TextBlock Text="{Binding Kind}" Foreground="{Binding KindBrush}" FontSize="10.5" FontWeight="SemiBold"
+                                                                           FontFamily="{StaticResource DisplayFont}" TextTrimming="CharacterEllipsis" />
+                                                            </Border>
+                                                            <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                                                                <TextBlock Text="{Binding Map}" FontSize="13" TextTrimming="CharacterEllipsis" />
+                                                                <TextBlock Classes="muted" Text="{Binding Detail}" FontSize="11.5" Margin="0,2,0,0" />
+                                                            </StackPanel>
+                                                            <TextBlock Grid.Column="2" Classes="numbers" Text="{Binding Time}" FontSize="13.5" VerticalAlignment="Top" Margin="10,1,0,0" />
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </ContentControl>
+                            </StackPanel>
+
+                            <!-- Everything hidden: say how to bring it back. -->
+                            <StackPanel Name="NothingShown" Grid.ColumnSpan="2" Margin="0,80,0,0" HorizontalAlignment="Center" IsVisible="False">
+                                <TextBlock Text="Everything's hidden" FontFamily="{StaticResource DisplayFont}" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                <TextBlock Classes="muted" Text="Customize, at the top right, brings parts back." FontSize="13" Margin="0,6,0,14" HorizontalAlignment="Center" />
+                                <Button Theme="{StaticResource AccentButton}" Content="Show everything" Command="{Binding ShowAllPartsCommand}" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
+                    </LayoutTransformControl>
+                </ScrollViewer>
+
+                <!-- toast -->
+                <Border Name="Toast" Grid.Row="2" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,26"
+                        CornerRadius="10" Background="#F21C1C24" BorderBrush="{StaticResource Line2Brush}" BorderThickness="1"
+                        Padding="16,10" Opacity="0" IsHitTestVisible="False">
+                    <TextBlock Name="ToastText" FontSize="12.5" />
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Grips along the edges for resizing (the window draws its own frame). -->
+        <Border Name="GripN" Height="5" VerticalAlignment="Top" Background="Transparent" Cursor="TopSide" Margin="8,0" />
+        <Border Name="GripS" Height="5" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomSide" Margin="8,0" />
+        <Border Name="GripW" Width="5" HorizontalAlignment="Left" Background="Transparent" Cursor="LeftSide" Margin="0,8" />
+        <Border Name="GripE" Width="5" HorizontalAlignment="Right" Background="Transparent" Cursor="RightSide" Margin="0,8" />
+        <Border Name="GripNW" Width="8" Height="8" HorizontalAlignment="Left" VerticalAlignment="Top" Background="Transparent" Cursor="TopLeftCorner" />
+        <Border Name="GripNE" Width="8" Height="8" HorizontalAlignment="Right" VerticalAlignment="Top" Background="Transparent" Cursor="TopRightCorner" />
+        <Border Name="GripSW" Width="8" Height="8" HorizontalAlignment="Left" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomLeftCorner" />
+        <Border Name="GripSE" Width="8" Height="8" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomRightCorner" />
+    </Panel>
+</Window>

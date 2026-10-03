@@ -2,79 +2,118 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Windows;
-using Microsoft.Win32;
+using System.Threading.Tasks;
+using KsfCompanion.Ui;
 
 namespace KsfCompanion
 {
     /// <summary>
-    /// One-click install: the downloaded KSFCompanion.exe copies itself to %LOCALAPPDATA%\Programs\KSF Companion
-    /// (no admin rights needed), adds Start menu and desktop shortcuts, starts with Windows, shows up under
-    /// Windows' installed apps (to remove it again), and starts from there. Running a newer download updates it.
+    /// One-click install: the downloaded KSFCompanion file copies itself to ~/.local/share/ksf-companion (no root
+    /// needed), adds itself to the app menu (right-click it there to uninstall), starts when you log in, and starts from
+    /// there. Running a newer download updates it.
     /// </summary>
     static class Installer
     {
-        const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\KSFCompanion";
+        static string Home => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
-        public static string InstallDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", Program.AppName);
-        public static string InstalledExe => Path.Combine(InstallDir, "KSFCompanion.exe");
-        static string RunningExe => Process.GetCurrentProcess().MainModule.FileName;
-        static string StartMenuLink => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), Program.AppName + ".lnk");
-        static string DesktopLink => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), Program.AppName + ".lnk");
+        static string DataHome
+        {
+            get
+            {
+                var xdg = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
+                return string.IsNullOrWhiteSpace(xdg) ? Path.Combine(Home, ".local", "share") : xdg;
+            }
+        }
+
+        public static string InstallDir => Path.Combine(DataHome, "ksf-companion");
+        public static string InstalledExe => Path.Combine(InstallDir, "KSFCompanion");
+        static string RunningExe => Environment.ProcessPath;
+        static string MenuEntry => Path.Combine(DataHome, "applications", "ksf-companion.desktop");
+        static string IconFile => Path.Combine(DataHome, "icons", "hicolor", "256x256", "apps", Desktop.IconName + ".png");
+
+        /// <summary>The copy that should start with your login: the installed one if there is one.</summary>
+        public static string ExecutablePath => File.Exists(InstalledExe) ? InstalledExe : RunningExe;
 
         /// <summary>
-        /// A downloaded copy (not the installed one): install it. A "portable.txt" next to the exe keeps it where it is,
-        /// and test copies (KSFC_DATA_DIR) are never installed.
+        /// A downloaded copy (not the installed one): install it. A "portable.txt" next to it keeps it where it is; test
+        /// copies (KSFC_DATA_DIR) and builds run from the source folder (not one self-contained file) are never installed.
         /// </summary>
         public static bool ShouldInstall()
         {
             if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("KSFC_DATA_DIR"))) return false;
+            // Only the single-file build carries everything it needs; a dotnet build output is a folder of files.
+            if (!string.IsNullOrEmpty(typeof(Installer).Assembly.Location)) return false;
             var exe = RunningExe;
-            if (string.Equals(exe, InstalledExe, StringComparison.OrdinalIgnoreCase)) return false;
+            if (string.IsNullOrEmpty(exe) || string.Equals(exe, InstalledExe, StringComparison.Ordinal)) return false;
             return !File.Exists(Path.Combine(Path.GetDirectoryName(exe), "portable.txt"));
         }
 
         /// <summary>Installs (or updates) and starts the installed copy. False if it couldn't, with the reason shown.</summary>
-        public static bool InstallAndStart(bool background)
+        public static async Task<bool> InstallAndStartAsync(bool background)
         {
             try
             {
-                // An older copy running in the tray holds the exe: stop it (it's this app, being updated).
+                // An older copy running in the tray: stop it (it's this app, being updated).
                 StopOtherCopies();
                 Directory.CreateDirectory(InstallDir);
-                File.Copy(RunningExe, InstalledExe, true);
-                var version = typeof(Installer).Assembly.GetName().Version;
+                // Copied next to it and then moved over it, so a running old copy is never written into.
+                var temp = InstalledExe + ".new";
+                File.Copy(RunningExe, temp, true);
+                File.SetUnixFileMode(temp, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                                           UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+                File.Move(temp, InstalledExe, true);
 
-                CreateShortcut(StartMenuLink, InstalledExe, "");
-                CreateShortcut(DesktopLink, InstalledExe, "");
-                using (var run = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run"))
-                    run.SetValue(Program.AppName, $"\"{InstalledExe}\" --background");
-                using (var key = Registry.CurrentUser.CreateSubKey(UninstallKey))
-                {
-                    key.SetValue("DisplayName", Program.AppName);
-                    key.SetValue("DisplayVersion", $"{version.Major}.{version.Minor}.{version.Build}");
-                    key.SetValue("Publisher", "KSF Companion");
-                    key.SetValue("DisplayIcon", InstalledExe);
-                    key.SetValue("InstallLocation", InstallDir);
-                    key.SetValue("UninstallString", $"\"{InstalledExe}\" --uninstall-app");
-                    key.SetValue("NoModify", 1, RegistryValueKind.DWord);
-                    key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
-                    key.SetValue("EstimatedSize", (int)(new FileInfo(InstalledExe).Length / 1024), RegistryValueKind.DWord);
-                }
-                Process.Start(new ProcessStartInfo(InstalledExe, background ? "--background" : "") { UseShellExecute = true, WorkingDirectory = InstallDir });
+                WriteIcon();
+                Directory.CreateDirectory(Path.GetDirectoryName(MenuEntry));
+                File.WriteAllText(MenuEntry, Desktop.Entry(InstalledExe, "", autostart: false));
+                Startup.Set(true);
+                RefreshMenus();
+
+                var start = new ProcessStartInfo(InstalledExe) { UseShellExecute = false, WorkingDirectory = InstallDir };
+                if (background) start.ArgumentList.Add("--background");
+                Process.Start(start);
                 return true;
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is System.ComponentModel.Win32Exception)
             {
-                MessageBox.Show("Couldn't install KSF Companion: " + ex.Message + "\n\nIt will run from where it is for now.", Program.AppName,
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                await Dialog.ShowAsync("Couldn't install KSF Companion: " + ex.Message + "\n\nIt will run from where it is for now.");
                 return false;
+            }
+        }
+
+        static void WriteIcon()
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(IconFile));
+                using var source = Avalonia.Platform.AssetLoader.Open(new Uri("avares://KSFCompanion/Ui/Assets/icon-256.png"));
+                using var target = File.Create(IconFile);
+                source.CopyTo(target);
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                Program.Trace("icon: " + ex.Message);
+            }
+        }
+
+        /// <summary>Asks the app menu to pick up the new entry (it usually notices by itself).</summary>
+        static void RefreshMenus()
+        {
+            foreach (var tool in new[] { "update-desktop-database", "kbuildsycoca6", "kbuildsycoca5" })
+            {
+                try
+                {
+                    var info = new ProcessStartInfo(tool) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+                    if (tool == "update-desktop-database") info.ArgumentList.Add(Path.GetDirectoryName(MenuEntry));
+                    using var _ = Process.Start(info);
+                }
+                catch (Exception ex) when (ex is System.ComponentModel.Win32Exception || ex is InvalidOperationException) { }
             }
         }
 
         static void StopOtherCopies()
         {
-            var me = Process.GetCurrentProcess().Id;
+            var me = Environment.ProcessId;
             foreach (var p in Process.GetProcessesByName("KSFCompanion").Where(p => p.Id != me))
             {
                 try
@@ -83,21 +122,23 @@ namespace KsfCompanion
                     p.WaitForExit(5000);
                 }
                 catch (Exception ex) when (ex is InvalidOperationException || ex is System.ComponentModel.Win32Exception) { }
+                finally { p.Dispose(); }
             }
         }
 
         /// <summary>
-        /// Windows' "Uninstall": takes KSF Companion out of CS:S (your keys get back what they did), removes the
-        /// shortcuts and the app. Your settings and play-later list stay in Documents\KSF Companion.
+        /// "Uninstall KSF Companion" (right-click it in the app menu): takes KSF Companion out of CS:S (your keys get back
+        /// what they did), removes it from the menu and from your login, and deletes the app. Your settings and play-later
+        /// list stay in Documents/KSF Companion.
         /// </summary>
-        public static int Uninstall(Settings settings)
+        public static async Task<int> UninstallAsync(Settings settings)
         {
             var question = "Remove KSF Companion?\n\nIt also comes out of Counter-Strike: Source (its cfg files go, and your keys get back what they did before). " +
-                           "Your settings and play-later list stay in Documents\\KSF Companion.";
-            if (MessageBox.Show(question, Program.AppName, MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return 1;
+                           "Your settings and play-later list stay in " + Program.DataDir + ".";
+            if (!await Dialog.AskAsync(question, "Remove")) return 1;
             if (GameBridge.FindGameProcessId() != 0)
             {
-                MessageBox.Show("Close Counter-Strike: Source first, then remove KSF Companion again.", Program.AppName, MessageBoxButton.OK, MessageBoxImage.Information);
+                await Dialog.ShowAsync("Close Counter-Strike: Source first, then remove KSF Companion again.");
                 return 1;
             }
             StopOtherCopies();
@@ -108,40 +149,14 @@ namespace KsfCompanion
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) { }
             Startup.Set(false);
-            foreach (var link in new[] { StartMenuLink, DesktopLink })
-                try { if (File.Exists(link)) File.Delete(link); } catch (IOException) { }
-            Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, false);
-            // The running exe can't delete itself: a moment after it exits, cmd removes the folder.
-            if (Directory.Exists(InstallDir))
-                Process.Start(new ProcessStartInfo("cmd.exe", $"/c ping 127.0.0.1 -n 3 > nul & rmdir /s /q \"{InstallDir}\"")
-                {
-                    CreateNoWindow = true,
-                    UseShellExecute = false,
-                });
-            MessageBox.Show("KSF Companion has been removed.", Program.AppName, MessageBoxButton.OK, MessageBoxImage.Information);
+            foreach (var file in new[] { MenuEntry, IconFile })
+                try { if (File.Exists(file)) File.Delete(file); } catch (IOException) { }
+            // A running program's file can be deleted on Linux; it's gone once this copy exits.
+            try { if (Directory.Exists(InstallDir)) Directory.Delete(InstallDir, true); }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) { }
+            RefreshMenus();
+            await Dialog.ShowAsync("KSF Companion has been removed.");
             return 0;
-        }
-
-        /// <summary>A .lnk through the Windows shell (WScript.Shell), without a COM reference.</summary>
-        static void CreateShortcut(string path, string target, string arguments)
-        {
-            var shellType = Type.GetTypeFromProgID("WScript.Shell");
-            if (shellType == null) return;
-            var shell = Activator.CreateInstance(shellType);
-            try
-            {
-                var link = shellType.InvokeMember("CreateShortcut", System.Reflection.BindingFlags.InvokeMethod, null, shell, new object[] { path });
-                var t = link.GetType();
-                t.InvokeMember("TargetPath", System.Reflection.BindingFlags.SetProperty, null, link, new object[] { target });
-                t.InvokeMember("Arguments", System.Reflection.BindingFlags.SetProperty, null, link, new object[] { arguments });
-                t.InvokeMember("WorkingDirectory", System.Reflection.BindingFlags.SetProperty, null, link, new object[] { Path.GetDirectoryName(target) });
-                t.InvokeMember("Description", System.Reflection.BindingFlags.SetProperty, null, link, new object[] { "KSF surf dashboard for CS:S" });
-                t.InvokeMember("Save", System.Reflection.BindingFlags.InvokeMethod, null, link, null);
-            }
-            finally
-            {
-                System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shell);
-            }
         }
     }
 }

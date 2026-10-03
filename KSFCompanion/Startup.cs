@@ -1,28 +1,40 @@
-using System.Windows.Forms;
-using Microsoft.Win32;
+using System;
+using System.IO;
 
 namespace KsfCompanion
 {
-    /// <summary>The optional "Start with Windows" entry (HKCU Run key, starts hidden in the tray).</summary>
+    /// <summary>The optional "Start when you log in" entry (an XDG autostart file; starts hidden in the tray).</summary>
     static class Startup
     {
-        const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        const string ValueName = "KSF Companion";
-
-        public static bool IsEnabled
+        static string ConfigHome
         {
             get
             {
-                using var key = Registry.CurrentUser.OpenSubKey(RunKey);
-                return key?.GetValue(ValueName) != null;
+                var xdg = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
+                return string.IsNullOrWhiteSpace(xdg) ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config") : xdg;
             }
         }
 
+        public static string EntryPath => Path.Combine(ConfigHome, "autostart", "ksf-companion.desktop");
+
+        public static bool IsEnabled => File.Exists(EntryPath);
+
         public static void Set(bool enabled)
         {
-            using var key = Registry.CurrentUser.CreateSubKey(RunKey);
-            if (enabled) key.SetValue(ValueName, $"\"{Application.ExecutablePath}\" --background");
-            else key.DeleteValue(ValueName, false);
+            try
+            {
+                if (!enabled)
+                {
+                    if (File.Exists(EntryPath)) File.Delete(EntryPath);
+                    return;
+                }
+                Directory.CreateDirectory(Path.GetDirectoryName(EntryPath));
+                File.WriteAllText(EntryPath, Desktop.Entry(Installer.ExecutablePath, "--background", autostart: true));
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                Program.Trace("autostart: " + ex.Message);
+            }
         }
     }
 }

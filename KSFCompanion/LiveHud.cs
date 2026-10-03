@@ -93,26 +93,41 @@ namespace KsfCompanion
         }
 
         /// <summary>
-        /// Whether something has the file open for writing: opening it while refusing to share writing fails then.
-        /// (Opened for reading only, and closed straight away.)
+        /// Whether the game has the file open (it holds the demo it's recording open the whole time). Linux doesn't lock
+        /// files the way Windows does, so this looks at the files the game has open instead.
         /// </summary>
         static bool IsBeingWritten(string file)
         {
+            var pid = GameBridge.FindGameProcessId();
+            if (pid == 0) return false;
+            // The game's own path to it may go another way (a library folder reached through a link): the demo's name
+            // in a cstrike folder is enough, there's only one game.
+            var name = "/" + Path.GetFileName(file);
             try
             {
-                using (new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read)) return false;
+                foreach (var fd in Directory.EnumerateFileSystemEntries($"/proc/{pid}/fd"))
+                {
+                    try
+                    {
+                        if (new FileInfo(fd).LinkTarget?.EndsWith(name, StringComparison.Ordinal) == true) return true;
+                    }
+                    catch (IOException) { }
+                }
             }
-            catch (IOException) { return true; }
-            catch (UnauthorizedAccessException) { return false; }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            return false;
         }
 
-        /// <summary>Removes our finished demos, so the next recording gets the plain name again. The one being recorded is locked and stays.</summary>
+        /// <summary>Removes our finished demos, so the next recording gets the plain name again. The one being recorded stays.</summary>
         public void DeleteFinishedDemos()
         {
             try
             {
                 foreach (var file in Directory.GetFiles(folder, DemoName + "*.dem"))
                 {
+                    // Deleting it would leave the game writing into a file nobody can read any more.
+                    if (IsBeingWritten(file)) continue;
                     try { File.Delete(file); }
                     catch (IOException) { }
                     catch (UnauthorizedAccessException) { }
@@ -386,6 +401,7 @@ namespace KsfCompanion
             {
                 foreach (var file in Directory.GetFiles(folder, "ksfc_*.dem"))
                 {
+                    if (IsBeingWritten(file)) continue;
                     try { File.Delete(file); }
                     catch (IOException) { }
                     catch (UnauthorizedAccessException) { }

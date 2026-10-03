@@ -1,7 +1,7 @@
 using System;
 using System.Linq;
-using System.Windows;
-using System.Windows.Controls;
+using Avalonia;
+using Avalonia.Controls;
 
 namespace KsfCompanion.Ui
 {
@@ -11,13 +11,13 @@ namespace KsfCompanion.Ui
     /// </summary>
     class ColumnsPanel : Panel
     {
-        public static readonly DependencyProperty MinItemWidthProperty = DependencyProperty.Register(nameof(MinItemWidth), typeof(double), typeof(ColumnsPanel),
-            new FrameworkPropertyMetadata(400.0, FrameworkPropertyMetadataOptions.AffectsMeasure));
-        public static readonly DependencyProperty SpacingProperty = DependencyProperty.Register(nameof(Spacing), typeof(double), typeof(ColumnsPanel),
-            new FrameworkPropertyMetadata(16.0, FrameworkPropertyMetadataOptions.AffectsMeasure));
+        public static readonly StyledProperty<double> MinItemWidthProperty = AvaloniaProperty.Register<ColumnsPanel, double>(nameof(MinItemWidth), 400.0);
+        public static readonly StyledProperty<double> SpacingProperty = AvaloniaProperty.Register<ColumnsPanel, double>(nameof(Spacing), 16.0);
 
-        public double MinItemWidth { get => (double)GetValue(MinItemWidthProperty); set => SetValue(MinItemWidthProperty, value); }
-        public double Spacing { get => (double)GetValue(SpacingProperty); set => SetValue(SpacingProperty, value); }
+        static ColumnsPanel() => AffectsMeasure<ColumnsPanel>(MinItemWidthProperty, SpacingProperty);
+
+        public double MinItemWidth { get => GetValue(MinItemWidthProperty); set => SetValue(MinItemWidthProperty, value); }
+        public double Spacing { get => GetValue(SpacingProperty); set => SetValue(SpacingProperty, value); }
 
         int Columns(double width) => double.IsInfinity(width) ? 1 : Math.Max(1, (int)((width + Spacing) / (MinItemWidth + Spacing)));
         double ColumnWidth(double width, int columns) => double.IsInfinity(width) ? MinItemWidth : (width - Spacing * (columns - 1)) / columns;
@@ -27,7 +27,7 @@ namespace KsfCompanion.Ui
             var columns = Columns(available.Width);
             var width = ColumnWidth(available.Width, columns);
             var heights = new double[columns];
-            foreach (UIElement child in InternalChildren)
+            foreach (var child in Children)
             {
                 child.Measure(new Size(width, double.PositiveInfinity));
                 var shortest = Array.IndexOf(heights, heights.Min());
@@ -42,7 +42,7 @@ namespace KsfCompanion.Ui
             var columns = Columns(final.Width);
             var width = ColumnWidth(final.Width, columns);
             var heights = new double[columns];
-            foreach (UIElement child in InternalChildren)
+            foreach (var child in Children)
             {
                 var shortest = Array.IndexOf(heights, heights.Min());
                 child.Arrange(new Rect(shortest * (width + Spacing), heights[shortest], width, child.DesiredSize.Height));
